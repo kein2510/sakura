@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   ShoppingBag,
   Hammer,
@@ -14,13 +14,15 @@ import {
   History,
   User,
   Store,
+  Radio,
 } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import { formatCurrency } from "@/lib/utils";
 import { ShopId, SHOPS } from "@/types";
+import { supabase } from "@/lib/supabase";
 
 export default function MainPage() {
-  const { products, ingredients, sellProducts, craftProducts, sales, users } = useApp();
+  const { products, ingredients, sellProducts, craftProducts, sales, users, refreshData } = useApp();
 
   // 現在選択中の店舗 ("sakura" | "buon_viaggio")
   const [selectedShopId, setSelectedShopId] = useState<ShopId>("sakura");
@@ -31,6 +33,44 @@ export default function MainPage() {
     type: "success" | "error";
     message: string;
   } | null>(null);
+  const [realtimeNotice, setRealtimeNotice] = useState<string | null>(null);
+
+  // メイン画面の Supabase Realtime サブスクリプション
+  useEffect(() => {
+    const channel = supabase
+      .channel("main_page_realtime_feed")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "sakura_items" },
+        (payload) => {
+          refreshData();
+          if (payload.eventType === "UPDATE") {
+            const newItem = payload.new as any;
+            setRealtimeNotice(`【在庫更新】「${newItem.name}」が同期されました (現在庫: ${newItem.current_stock}${newItem.unit})`);
+          } else if (payload.eventType === "INSERT") {
+            setRealtimeNotice("【商品追加】新しい商品が同期されました！");
+          }
+          setTimeout(() => setRealtimeNotice(null), 3500);
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "sakura_sales" },
+        (payload) => {
+          refreshData();
+          if (payload.eventType === "INSERT") {
+            const s = payload.new as any;
+            setRealtimeNotice(`【売上登録】${s.staff_name}が売上 ¥${Number(s.total_amount).toLocaleString()} を登録しました！`);
+          }
+          setTimeout(() => setRealtimeNotice(null), 3500);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [refreshData]);
 
   // 売上履歴のフィルター
   const [selectedStaffFilter, setSelectedStaffFilter] = useState<string>("all");
@@ -122,6 +162,14 @@ export default function MainPage() {
       {/* 画面上部コントロールバー（ヘッダー直下に隙間ゼロで完全吸着する全幅不透明 sticky バー） */}
       <div className="sticky top-0 z-30 w-full bg-stone-950 border-b border-stone-800 shadow-2xl px-4 md:px-6 py-4">
         <div className="max-w-6xl mx-auto space-y-3">
+          {/* リアルタイム同期通知 */}
+          {realtimeNotice && (
+            <div className="bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 animate-bounce">
+              <Radio className="w-4 h-4 text-emerald-400 animate-pulse" />
+              <span>{realtimeNotice}</span>
+            </div>
+          )}
+
           {/* ① 店舗切り替えセレクター（和食さくら / Buon viaggio） */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-stone-800/80 pb-2.5">
             <div className="flex items-center gap-2">

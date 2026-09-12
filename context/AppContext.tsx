@@ -146,6 +146,9 @@ interface AppContextType {
   vaultBalance: number;
   updateVaultBalance: (newBalance: number, reason?: string) => void;
 
+  // クラウド強制再同期
+  refreshData: () => Promise<void>;
+
   // 互換用メソッド
   addSale: (saleData: any) => Promise<Sale>;
   recordStockTransaction: (params: any) => void;
@@ -521,6 +524,130 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // ============================================================================
   // Supabase 初期データ取得 & Realtime 購読
   // ============================================================================
+  const fetchCloudData = useCallback(async () => {
+    const client = supabase;
+    if (!isSupabaseConfigured || !client) return;
+
+    try {
+      setSyncStatus("syncing");
+
+      // (A) アイテム取得
+      const { data: cloudItems, error: itemsErr } = await client
+        .from("sakura_items")
+        .select("*");
+
+      if (!itemsErr && cloudItems) {
+        if (cloudItems.length > 0) {
+          const mapped: Item[] = cloudItems.map((c: any) => ({
+            id: c.id,
+            code: c.code || undefined,
+            name: c.name,
+            type: c.type,
+            shopId: (c.shop_id as ShopId) || "sakura",
+            unit: c.unit,
+            current_stock: Number(c.current_stock),
+            optimal_stock: Number(c.optimal_stock ?? 10),
+            alert_threshold: Number(c.alert_threshold ?? 3),
+            cost_price: Number(c.cost_price ?? 0),
+            selling_price: Number(c.selling_price),
+            category_id: c.category_id || undefined,
+            category_name: c.category_name || undefined,
+            image_url: c.image_url || undefined,
+            recipe: c.recipe || [],
+            created_at: c.created_at,
+            updated_at: c.updated_at,
+          }));
+          setItems(mapped);
+        } else {
+          await syncItemsBatchToCloud(initialItems);
+        }
+      }
+
+      // (B) 売上伝票取得
+      const { data: cloudSales, error: salesErr } = await client
+        .from("sakura_sales")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+      if (!salesErr && cloudSales) {
+        if (cloudSales.length > 0) {
+          const mappedSales: Sale[] = cloudSales.map((s: any) => ({
+            id: s.id,
+            shopId: (s.shop_id as ShopId) || "sakura",
+            staffName: s.staff_name,
+            staffUserId: s.staff_user_id || undefined,
+            totalAmount: Number(s.total_amount),
+            total_amount: Number(s.total_amount),
+            staff_name: s.staff_name,
+            payment_method: s.payment_method,
+            notes: s.notes || undefined,
+            items: s.items || [],
+            created_at: s.created_at,
+          }));
+          setSales(mappedSales);
+        } else if (initialSales.length > 0) {
+          for (const s of initialSales) {
+            await syncSaleToCloud(s);
+          }
+        }
+      }
+
+      // (C) 操作ログ取得 (最新500件)
+      const { data: cloudLogs, error: logsErr } = await client
+        .from("sakura_action_logs")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(500);
+
+      if (!logsErr && cloudLogs) {
+        if (cloudLogs.length > 0) {
+          const mappedLogs: ActionLog[] = cloudLogs.map((l: any) => ({
+            id: l.id,
+            userName: l.user_name,
+            userRole: l.user_role as Role,
+            category: l.category as ActionCategory,
+            title: l.title,
+            detail: l.detail,
+            created_at: l.created_at,
+          }));
+          setActionLogs(mappedLogs);
+        } else if (initialActionLogs.length > 0) {
+          for (const l of initialActionLogs) {
+            await syncLogToCloud(l);
+          }
+        }
+      }
+
+      // (D) 共通システム状態 (金庫残高, ボーナス, 役職, 従業員)
+      const { data: stateData, error: stateErr } = await client
+        .from("sakura_system_state")
+        .select("*");
+
+      if (!stateErr && stateData) {
+        stateData.forEach((row: any) => {
+          if (row.key === "vault_balance" && typeof row.value?.balance === "number") {
+            setVaultBalance(row.value.balance);
+          } else if (row.key === "weekly_bonuses" && row.value) {
+            setWeeklyBonuses(row.value);
+          } else if (row.key === "roles" && Array.isArray(row.value)) {
+            setRoles(row.value);
+          } else if (row.key === "users" && Array.isArray(row.value)) {
+            setUsers(row.value);
+          }
+        });
+      }
+
+      setSyncStatus("connected");
+    } catch (err) {
+      console.error("Supabase initial load error:", err);
+      setSyncStatus("offline");
+    }
+  }, []);
+
+  const refreshData = async () => {
+    await fetchCloudData();
+  };
+
   useEffect(() => {
     const client = supabase;
     if (!isSupabaseConfigured || !client) {
@@ -529,127 +656,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
 
     let isMounted = true;
-    setSyncStatus("syncing");
-
-    // 1. 初回データロード
-    const fetchCloudData = async () => {
-      try {
-        // (A) アイテム取得
-        const { data: cloudItems, error: itemsErr } = await client
-          .from("sakura_items")
-          .select("*");
-
-        if (!itemsErr && cloudItems && isMounted) {
-          if (cloudItems.length > 0) {
-            const mapped: Item[] = cloudItems.map((c: any) => ({
-              id: c.id,
-              code: c.code || undefined,
-              name: c.name,
-              type: c.type,
-              shopId: (c.shop_id as ShopId) || "sakura",
-              unit: c.unit,
-              current_stock: Number(c.current_stock),
-              optimal_stock: Number(c.optimal_stock ?? 10),
-              alert_threshold: Number(c.alert_threshold ?? 3),
-              cost_price: Number(c.cost_price ?? 0),
-              selling_price: Number(c.selling_price),
-              category_id: c.category_id || undefined,
-              category_name: c.category_name || undefined,
-              image_url: c.image_url || undefined,
-              recipe: c.recipe || [],
-              created_at: c.created_at,
-              updated_at: c.updated_at,
-            }));
-            setItems(mapped);
-          } else {
-            // クラウドが空の場合は初期マスタデータをシード
-            await syncItemsBatchToCloud(initialItems);
-          }
-        }
-
-        // (B) 売上伝票取得
-        const { data: cloudSales, error: salesErr } = await client
-          .from("sakura_sales")
-          .select("*")
-          .order("created_at", { ascending: false });
-
-        if (!salesErr && cloudSales && isMounted) {
-          if (cloudSales.length > 0) {
-            const mappedSales: Sale[] = cloudSales.map((s: any) => ({
-              id: s.id,
-              shopId: (s.shop_id as ShopId) || "sakura",
-              staffName: s.staff_name,
-              staffUserId: s.staff_user_id || undefined,
-              totalAmount: Number(s.total_amount),
-              total_amount: Number(s.total_amount),
-              staff_name: s.staff_name,
-              payment_method: s.payment_method,
-              notes: s.notes || undefined,
-              items: s.items || [],
-              created_at: s.created_at,
-            }));
-            setSales(mappedSales);
-          } else if (initialSales.length > 0) {
-            for (const s of initialSales) {
-              await syncSaleToCloud(s);
-            }
-          }
-        }
-
-        // (C) 操作ログ取得 (最新500件)
-        const { data: cloudLogs, error: logsErr } = await client
-          .from("sakura_action_logs")
-          .select("*")
-          .order("created_at", { ascending: false })
-          .limit(500);
-
-        if (!logsErr && cloudLogs && isMounted) {
-          if (cloudLogs.length > 0) {
-            const mappedLogs: ActionLog[] = cloudLogs.map((l: any) => ({
-              id: l.id,
-              userName: l.user_name,
-              userRole: l.user_role as Role,
-              category: l.category as ActionCategory,
-              title: l.title,
-              detail: l.detail,
-              created_at: l.created_at,
-            }));
-            setActionLogs(mappedLogs);
-          } else if (initialActionLogs.length > 0) {
-            for (const l of initialActionLogs) {
-              await syncLogToCloud(l);
-            }
-          }
-        }
-
-        // (D) 共通システム状態 (金庫残高, ボーナス, 役職, 従業員)
-        const { data: stateData, error: stateErr } = await client
-          .from("sakura_system_state")
-          .select("*");
-
-        if (!stateErr && stateData && isMounted) {
-          stateData.forEach((row: any) => {
-            if (row.key === "vault_balance" && typeof row.value?.balance === "number") {
-              setVaultBalance(row.value.balance);
-            } else if (row.key === "weekly_bonuses" && row.value) {
-              setWeeklyBonuses(row.value);
-            } else if (row.key === "roles" && Array.isArray(row.value)) {
-              setRoles(row.value);
-            } else if (row.key === "users" && Array.isArray(row.value)) {
-              setUsers(row.value);
-            }
-          });
-        }
-
-        if (isMounted) {
-          setSyncStatus("connected");
-        }
-      } catch (err) {
-        console.error("Supabase initial load error:", err);
-        if (isMounted) setSyncStatus("offline");
-      }
-    };
-
     fetchCloudData();
 
     // 2. Realtime 購読
@@ -703,49 +709,75 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       // 売上伝票変更
       .on(
         "postgres_changes",
-        { event: "INSERT", schema: "public", table: "sakura_sales" },
+        { event: "*", schema: "public", table: "sakura_sales" },
         (payload) => {
           if (!isMounted) return;
-          const s = payload.new as any;
-          const newSale: Sale = {
-            id: s.id,
-            shopId: (s.shop_id as ShopId) || "sakura",
-            staffName: s.staff_name,
-            staffUserId: s.staff_user_id || undefined,
-            totalAmount: Number(s.total_amount),
-            total_amount: Number(s.total_amount),
-            staff_name: s.staff_name,
-            payment_method: s.payment_method,
-            notes: s.notes || undefined,
-            items: s.items || [],
-            created_at: s.created_at,
-          };
-          setSales((prev) => {
-            if (prev.some((item) => item.id === newSale.id)) return prev;
-            return [newSale, ...prev];
-          });
+          const ev = payload.eventType;
+          if (ev === "INSERT" || ev === "UPDATE") {
+            const s = payload.new as any;
+            const newSale: Sale = {
+              id: s.id,
+              shopId: (s.shop_id as ShopId) || "sakura",
+              staffName: s.staff_name,
+              staffUserId: s.staff_user_id || undefined,
+              totalAmount: Number(s.total_amount),
+              total_amount: Number(s.total_amount),
+              staff_name: s.staff_name,
+              payment_method: s.payment_method,
+              notes: s.notes || undefined,
+              items: s.items || [],
+              created_at: s.created_at,
+            };
+            setSales((prev) => {
+              const idx = prev.findIndex((item) => item.id === newSale.id);
+              if (idx >= 0) {
+                const next = [...prev];
+                next[idx] = newSale;
+                return next;
+              }
+              return [newSale, ...prev];
+            });
+          } else if (ev === "DELETE") {
+            const oldId = (payload.old as any).id;
+            if (oldId) {
+              setSales((prev) => prev.filter((item) => item.id !== oldId));
+            }
+          }
         }
       )
       // 操作ログ変更
       .on(
         "postgres_changes",
-        { event: "INSERT", schema: "public", table: "sakura_action_logs" },
+        { event: "*", schema: "public", table: "sakura_action_logs" },
         (payload) => {
           if (!isMounted) return;
-          const l = payload.new as any;
-          const newLog: ActionLog = {
-            id: l.id,
-            userName: l.user_name,
-            userRole: l.user_role as Role,
-            category: l.category as ActionCategory,
-            title: l.title,
-            detail: l.detail,
-            created_at: l.created_at,
-          };
-          setActionLogs((prev) => {
-            if (prev.some((item) => item.id === newLog.id)) return prev;
-            return [newLog, ...prev];
-          });
+          const ev = payload.eventType;
+          if (ev === "INSERT" || ev === "UPDATE") {
+            const l = payload.new as any;
+            const newLog: ActionLog = {
+              id: l.id,
+              userName: l.user_name,
+              userRole: l.user_role as Role,
+              category: l.category as ActionCategory,
+              title: l.title,
+              detail: l.detail,
+              created_at: l.created_at,
+            };
+            setActionLogs((prev) => {
+              const idx = prev.findIndex((item) => item.id === newLog.id);
+              if (idx >= 0) {
+                const next = [...prev];
+                next[idx] = newLog;
+                return next;
+              }
+              return [newLog, ...prev];
+            });
+          } else if (ev === "DELETE") {
+            const oldId = (payload.old as any).id;
+            if (oldId) {
+              setActionLogs((prev) => prev.filter((item) => item.id !== oldId));
+            }
+          }
         }
       )
       // システム共通状態 (金庫、ボーナス、ロール、ユーザー)
@@ -776,8 +808,23 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         }
       });
 
+    // 画面フォーカス時またはタブ復帰時の自動再同期
+    const handleFocus = () => {
+      if (document.visibilityState === "visible") {
+        fetchCloudData();
+      }
+    };
+    window.addEventListener("focus", handleFocus);
+    window.addEventListener("visibilitychange", handleFocus);
+
+    // 15秒ごとの定期バックアップ同期
+    const intervalTimer = setInterval(fetchCloudData, 15000);
+
     return () => {
       isMounted = false;
+      window.removeEventListener("focus", handleFocus);
+      window.removeEventListener("visibilitychange", handleFocus);
+      clearInterval(intervalTimer);
       client.removeChannel(channel);
     };
   }, []);
@@ -1895,6 +1942,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         logAction,
         vaultBalance,
         updateVaultBalance,
+        refreshData,
         addSale: async (saleData: any): Promise<Sale> => {
           const totalAmt = saleData.total_amount || saleData.totalAmount || 0;
           const newSale: Sale = {

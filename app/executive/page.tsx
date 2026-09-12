@@ -39,10 +39,12 @@ import {
   Palette,
   Store,
   Landmark,
+  Radio,
 } from "lucide-react";
 import Link from "next/link";
 import { useApp } from "@/context/AppContext";
 import { formatCurrency } from "@/lib/utils";
+import { supabase } from "@/lib/supabase";
 import ImageUploader from "@/components/ImageUploader";
 import {
   RecipeRequirement,
@@ -87,13 +89,53 @@ export default function ExecutivePage() {
     addItem,
     updateItem,
     deleteItem,
-    updateItemImage,
     actionLogs,
     vaultBalance,
     updateVaultBalance,
+    refreshData,
   } = useApp();
 
   const [activeTab, setActiveTab] = useState<"users" | "roles" | "bonus" | "recipes" | "items" | "logs">("users");
+  const [realtimeNotice, setRealtimeNotice] = useState<string | null>(null);
+
+  // 幹部ページの Supabase Realtime サブスクリプション
+  useEffect(() => {
+    const channel = supabase
+      .channel("executive_page_realtime_feed")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "sakura_system_state" },
+        (payload) => {
+          refreshData();
+          const row = payload.new as any;
+          if (row?.key === "vault_balance") {
+            setRealtimeNotice(`【金庫同期】金庫残高が自動更新されました (現在: ¥${Number(row.value?.balance || 0).toLocaleString()})`);
+          } else {
+            setRealtimeNotice("【システム同期】幹部設定データが自動同期されました！");
+          }
+          setTimeout(() => setRealtimeNotice(null), 3500);
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "sakura_action_logs" },
+        () => {
+          refreshData();
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "sakura_sales" },
+        () => {
+          refreshData();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [refreshData]);
 
   // --- 従業員管理 state ---
   const [newUsername, setNewUsername] = useState("");
@@ -573,6 +615,14 @@ export default function ExecutivePage() {
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto p-4 md:p-6 pb-16">
+      {/* リアルタイム同期通知 */}
+      {realtimeNotice && (
+        <div className="bg-amber-500/20 border border-amber-500/40 text-amber-300 px-4 py-2.5 rounded-2xl text-xs font-bold flex items-center gap-2 animate-bounce">
+          <Radio className="w-4 h-4 text-amber-400 animate-pulse" />
+          <span>{realtimeNotice}</span>
+        </div>
+      )}
+
       {/* 幹部専用ヘッダー */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-gradient-to-r from-amber-600 via-stone-800 to-stone-900 p-6 rounded-3xl text-white shadow-lg shadow-amber-950/20">
         <div className="flex items-center gap-3">

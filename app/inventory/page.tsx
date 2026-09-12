@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Package,
   Boxes,
@@ -15,18 +15,55 @@ import {
   Edit2,
   Utensils,
   Layers,
+  Radio,
 } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import { formatCurrency } from "@/lib/utils";
 import { Item, ShopId, SHOPS } from "@/types";
+import { supabase } from "@/lib/supabase";
 
 export default function InventoryPage() {
-  const { items, products, ingredients, adjustStock, actionLogs } = useApp();
+  const { items, products, ingredients, adjustStock, actionLogs, refreshData } = useApp();
   const [selectedTab, setSelectedTab] = useState<"all" | "sakura" | "buon_viaggio" | "ingredient">("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [adjustingItem, setAdjustingItem] = useState<Item | null>(null);
   const [newStockInput, setNewStockInput] = useState<number>(0);
   const [adjustReason, setAdjustReason] = useState<string>("仕入れ・補充");
+  const [realtimeNotice, setRealtimeNotice] = useState<string | null>(null);
+
+  // 全体在庫画面の Supabase Realtime サブスクリプション
+  useEffect(() => {
+    const channel = supabase
+      .channel("inventory_page_realtime_feed")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "sakura_items" },
+        (payload) => {
+          refreshData();
+          if (payload.eventType === "UPDATE") {
+            const newItem = payload.new as any;
+            setRealtimeNotice(`「${newItem.name}」の在庫が自動同期されました (現在: ${newItem.current_stock}${newItem.unit})`);
+          } else if (payload.eventType === "INSERT") {
+            setRealtimeNotice("新しい商品・素材が自動追加されました！");
+          } else if (payload.eventType === "DELETE") {
+            setRealtimeNotice("商品・素材の削除が同期されました！");
+          }
+          setTimeout(() => setRealtimeNotice(null), 3500);
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "sakura_action_logs" },
+        () => {
+          refreshData();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [refreshData]);
 
   // 店舗別商品
   const sakuraProducts = products.filter((p) => (p.shopId || "sakura") === "sakura");
@@ -98,6 +135,14 @@ export default function InventoryPage() {
           </p>
         </div>
       </div>
+
+      {/* リアルタイム更新通知バナー */}
+      {realtimeNotice && (
+        <div className="bg-amber-500/20 border border-amber-500/40 text-amber-300 px-4 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 animate-bounce">
+          <Radio className="w-4 h-4 text-amber-400 animate-pulse" />
+          <span>{realtimeNotice}</span>
+        </div>
+      )}
 
       {/* サマリーカード (4分割) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

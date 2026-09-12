@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Receipt,
   PlusCircle,
@@ -13,17 +13,47 @@ import {
   ArrowUpDown,
   Utensils,
   Award,
+  Sparkles,
+  Radio,
 } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import SalesModal from "@/components/SalesModal";
 import { PaymentMethod } from "@/types";
+import { supabase } from "@/lib/supabase";
 
 export default function SalesPage() {
-  const { sales, items } = useApp();
+  const { sales, items, refreshData } = useApp();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [filterMethod, setFilterMethod] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const [realtimeNotice, setRealtimeNotice] = useState<string | null>(null);
+
+  // 売上画面の Supabase Realtime サブスクリプション (.channel() / .on())
+  useEffect(() => {
+    const channel = supabase
+      .channel("sales_page_realtime_feed")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "sakura_sales" },
+        (payload) => {
+          refreshData();
+          if (payload.eventType === "INSERT") {
+            setRealtimeNotice("新しい売上伝票が自動同期されました！");
+          } else if (payload.eventType === "UPDATE") {
+            setRealtimeNotice("売上伝票の更新が反映されました！");
+          } else if (payload.eventType === "DELETE") {
+            setRealtimeNotice("売上伝票の削除が反映されました！");
+          }
+          setTimeout(() => setRealtimeNotice(null), 3500);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [refreshData]);
 
   // 集計計算
   const totalSalesAmount = sales.reduce((sum, s) => sum + (s.totalAmount ?? s.total_amount ?? 0), 0);
@@ -94,6 +124,14 @@ export default function SalesPage() {
           新規売上入力
         </button>
       </div>
+
+      {/* リアルタイム更新通知バナー */}
+      {realtimeNotice && (
+        <div className="bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 px-4 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 animate-bounce">
+          <Radio className="w-4 h-4 text-emerald-400 animate-pulse" />
+          <span>{realtimeNotice}</span>
+        </div>
+      )}
 
       {/* サマリーカード */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
