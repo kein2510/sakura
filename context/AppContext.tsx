@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from "react";
 import {
   StaffUser,
   Role,
@@ -23,7 +23,7 @@ import {
   initialSales,
 } from "@/data/mockData";
 import { getRecentWeeks, isDateInWeek, WeekPeriod } from "@/lib/dateUtils";
-import { supabase } from "@/lib/supabase";
+import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 
 export const defaultCustomRoles: CustomRole[] = [
   {
@@ -68,7 +68,12 @@ export const defaultCustomRoles: CustomRole[] = [
   },
 ];
 
+export type SyncStatus = "connected" | "syncing" | "offline";
+
 interface AppContextType {
+  // クラウド同期状態
+  syncStatus: SyncStatus;
+
   // 認証関連
   currentUser: StaffUser | null;
   isAuthenticated: boolean;
@@ -149,6 +154,9 @@ interface AppContextType {
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
+  // クラウド同期状態
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>("offline");
+
   // 役職・カスタムロール状態
   const [roles, setRoles] = useState<CustomRole[]>(() => {
     if (typeof window !== "undefined") {
@@ -177,7 +185,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         }
       }
     }
-    // 全ユーザーに roleId と roleName を確実に紐づけ
     return loadedUsers.map((u) => {
       const isKein = u.username.toLowerCase() === "kein";
       if (isKein) {
@@ -207,7 +214,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         }
       }
     }
-    // 初期状態で kein (001) でログイン済みとして起動し、すぐに使える状態にする
     const keinUser = mockStaffUsers[0];
     return {
       ...keinUser,
@@ -225,7 +231,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         try {
           const parsed: Item[] = JSON.parse(saved);
           const existingIds = new Set(parsed.map((i) => i.id));
-          // 新しく mockData に追加された Buon viaggio 商品や素材があれば追加マージ
           const newDefaults = initialItems.filter((i) => !existingIds.has(i.id));
           const normalized = parsed.map((item) => {
             if (item.type === "product" && !item.shopId) {
@@ -256,9 +261,22 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
     return initialSales;
   });
-  const [actionLogs, setActionLogs] = useState<ActionLog[]>(initialActionLogs);
 
-  // 週次ボーナス確定データ { [weekKey]: { isFinalized, finalizedAt, finalizedBy, bonuses: { [userId]: { amount, note, isPaid, paidAt } } } }
+  const [actionLogs, setActionLogs] = useState<ActionLog[]>(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("fivem_sakura_action_logs");
+      if (saved) {
+        try {
+          return JSON.parse(saved);
+        } catch {
+          // ignore
+        }
+      }
+    }
+    return initialActionLogs;
+  });
+
+  // 週次ボーナス確定データ
   const [weeklyBonuses, setWeeklyBonuses] = useState<{
     [weekKey: string]: {
       isFinalized: boolean;
@@ -277,7 +295,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         }
       }
     }
-    // 初期サンプル: 直近の締め週のデータ
     const recentWeeks = getRecentWeeks(2);
     const lastWeek = recentWeeks[1];
     if (lastWeek) {
@@ -296,7 +313,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return {};
   });
 
-  // ゲーム内金庫残高 (localStorage保存)
+  // ゲーム内金庫残高
   const [vaultBalance, setVaultBalance] = useState<number>(() => {
     if (typeof window !== "undefined") {
       const saved = localStorage.getItem("fivem_sakura_vault_balance");
@@ -305,10 +322,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         if (!isNaN(num)) return num;
       }
     }
-    return 3000000; // 初期サンプル金庫残高: ¥3,000,000
+    return 3000000;
   });
 
-  // ローカル永続化
+  // ローカル永続化 (オフラインバックアップ用)
   useEffect(() => {
     if (typeof window !== "undefined") {
       localStorage.setItem("fivem_sakura_vault_balance", vaultBalance.toString());
@@ -341,6 +358,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (typeof window !== "undefined") {
+      localStorage.setItem("fivem_sakura_action_logs", JSON.stringify(actionLogs));
+    }
+  }, [actionLogs]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
       localStorage.setItem("fivem_sakura_items", JSON.stringify(items));
     }
   }, [items]);
@@ -355,27 +378,408 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   }, [currentUser]);
 
-  // 操作ログの追加
-  const logAction = ({
-    category,
-    title,
-    detail,
-  }: {
-    category: ActionCategory;
-    title: string;
-    detail: string;
-  }) => {
-    const newLog: ActionLog = {
-      id: `log-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-      userName: currentUser ? currentUser.displayName : "ゲスト",
-      userRole: currentUser ? currentUser.role : "staff",
+  // ============================================================================
+  // Supabase ヘルパー関数群（クラウド保存）
+  // ============================================================================
+  const syncItemToCloud = async (item: Item) => {
+    if (!supabase) return;
+    try {
+      await supabase.from("sakura_items").upsert({
+        id: item.id,
+        code: item.code || null,
+        name: item.name,
+        type: item.type,
+        shop_id: item.shopId || "sakura",
+        unit: item.unit,
+        current_stock: item.current_stock,
+        optimal_stock: item.optimal_stock ?? 10,
+        alert_threshold: item.alert_threshold ?? 3,
+        cost_price: item.cost_price ?? 0,
+        selling_price: item.selling_price,
+        category_id: item.category_id || null,
+        category_name: item.category_name || null,
+        image_url: item.image_url || null,
+        recipe: item.recipe || [],
+        updated_at: item.updated_at || new Date().toISOString(),
+      });
+    } catch (e) {
+      console.error("Failed to sync item to cloud:", e);
+    }
+  };
+
+  const syncItemsBatchToCloud = async (batchItems: Item[]) => {
+    if (!supabase || batchItems.length === 0) return;
+    try {
+      const records = batchItems.map((item) => ({
+        id: item.id,
+        code: item.code || null,
+        name: item.name,
+        type: item.type,
+        shop_id: item.shopId || "sakura",
+        unit: item.unit,
+        current_stock: item.current_stock,
+        optimal_stock: item.optimal_stock ?? 10,
+        alert_threshold: item.alert_threshold ?? 3,
+        cost_price: item.cost_price ?? 0,
+        selling_price: item.selling_price,
+        category_id: item.category_id || null,
+        category_name: item.category_name || null,
+        image_url: item.image_url || null,
+        recipe: item.recipe || [],
+        updated_at: item.updated_at || new Date().toISOString(),
+      }));
+      await supabase.from("sakura_items").upsert(records);
+    } catch (e) {
+      console.error("Failed to batch sync items to cloud:", e);
+    }
+  };
+
+  const deleteItemFromCloud = async (itemId: string) => {
+    if (!supabase) return;
+    try {
+      await supabase.from("sakura_items").delete().eq("id", itemId);
+    } catch (e) {
+      console.error("Failed to delete item from cloud:", e);
+    }
+  };
+
+  const syncSaleToCloud = async (sale: Sale) => {
+    if (!supabase) return;
+    try {
+      await supabase.from("sakura_sales").insert({
+        id: sale.id,
+        shop_id: sale.shopId || "sakura",
+        staff_name: sale.staffName || sale.staff_name || "店員",
+        staff_user_id: sale.staffUserId || null,
+        total_amount: sale.totalAmount ?? sale.total_amount ?? 0,
+        items: sale.items || [],
+        payment_method: sale.payment_method || "cash",
+        notes: sale.notes || null,
+        created_at: sale.created_at || new Date().toISOString(),
+      });
+    } catch (e) {
+      console.error("Failed to sync sale to cloud:", e);
+    }
+  };
+
+  const syncLogToCloud = async (log: ActionLog) => {
+    if (!supabase) return;
+    try {
+      await supabase.from("sakura_action_logs").insert({
+        id: log.id,
+        user_name: log.userName,
+        user_role: log.userRole,
+        category: log.category,
+        title: log.title,
+        detail: log.detail,
+        created_at: log.created_at,
+      });
+    } catch (e) {
+      console.error("Failed to sync log to cloud:", e);
+    }
+  };
+
+  const syncStateToCloud = async (key: string, value: any) => {
+    if (!supabase) return;
+    try {
+      await supabase.from("sakura_system_state").upsert({
+        key,
+        value,
+        updated_at: new Date().toISOString(),
+      });
+    } catch (e) {
+      console.error(`Failed to sync state [${key}] to cloud:`, e);
+    }
+  };
+
+  // 操作ログの追加（ローカル＋クラウド保存）
+  const logAction = useCallback(
+    ({
       category,
       title,
       detail,
-      created_at: new Date().toISOString(),
+    }: {
+      category: ActionCategory;
+      title: string;
+      detail: string;
+    }) => {
+      const newLog: ActionLog = {
+        id: `log-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        userName: currentUser ? currentUser.displayName : "ゲスト",
+        userRole: currentUser ? currentUser.role : "staff",
+        category,
+        title,
+        detail,
+        created_at: new Date().toISOString(),
+      };
+      setActionLogs((prev) => [newLog, ...prev]);
+      syncLogToCloud(newLog);
+    },
+    [currentUser]
+  );
+
+  // ============================================================================
+  // Supabase 初期データ取得 & Realtime 購読
+  // ============================================================================
+  useEffect(() => {
+    if (!isSupabaseConfigured || !supabase) {
+      setSyncStatus("offline");
+      return;
+    }
+
+    let isMounted = true;
+    setSyncStatus("syncing");
+
+    // 1. 初回データロード
+    const fetchCloudData = async () => {
+      try {
+        // (A) アイテム取得
+        const { data: cloudItems, error: itemsErr } = await supabase
+          .from("sakura_items")
+          .select("*");
+
+        if (!itemsErr && cloudItems && isMounted) {
+          if (cloudItems.length > 0) {
+            const mapped: Item[] = cloudItems.map((c: any) => ({
+              id: c.id,
+              code: c.code || undefined,
+              name: c.name,
+              type: c.type,
+              shopId: (c.shop_id as ShopId) || "sakura",
+              unit: c.unit,
+              current_stock: Number(c.current_stock),
+              optimal_stock: Number(c.optimal_stock ?? 10),
+              alert_threshold: Number(c.alert_threshold ?? 3),
+              cost_price: Number(c.cost_price ?? 0),
+              selling_price: Number(c.selling_price),
+              category_id: c.category_id || undefined,
+              category_name: c.category_name || undefined,
+              image_url: c.image_url || undefined,
+              recipe: c.recipe || [],
+              created_at: c.created_at,
+              updated_at: c.updated_at,
+            }));
+            setItems(mapped);
+          } else {
+            // クラウドが空の場合は初期マスタデータをシード
+            await syncItemsBatchToCloud(initialItems);
+          }
+        }
+
+        // (B) 売上伝票取得
+        const { data: cloudSales, error: salesErr } = await supabase
+          .from("sakura_sales")
+          .select("*")
+          .order("created_at", { ascending: false });
+
+        if (!salesErr && cloudSales && isMounted) {
+          if (cloudSales.length > 0) {
+            const mappedSales: Sale[] = cloudSales.map((s: any) => ({
+              id: s.id,
+              shopId: (s.shop_id as ShopId) || "sakura",
+              staffName: s.staff_name,
+              staffUserId: s.staff_user_id || undefined,
+              totalAmount: Number(s.total_amount),
+              total_amount: Number(s.total_amount),
+              staff_name: s.staff_name,
+              payment_method: s.payment_method,
+              notes: s.notes || undefined,
+              items: s.items || [],
+              created_at: s.created_at,
+            }));
+            setSales(mappedSales);
+          } else if (initialSales.length > 0) {
+            for (const s of initialSales) {
+              await syncSaleToCloud(s);
+            }
+          }
+        }
+
+        // (C) 操作ログ取得 (最新500件)
+        const { data: cloudLogs, error: logsErr } = await supabase
+          .from("sakura_action_logs")
+          .select("*")
+          .order("created_at", { ascending: false })
+          .limit(500);
+
+        if (!logsErr && cloudLogs && isMounted) {
+          if (cloudLogs.length > 0) {
+            const mappedLogs: ActionLog[] = cloudLogs.map((l: any) => ({
+              id: l.id,
+              userName: l.user_name,
+              userRole: l.user_role as Role,
+              category: l.category as ActionCategory,
+              title: l.title,
+              detail: l.detail,
+              created_at: l.created_at,
+            }));
+            setActionLogs(mappedLogs);
+          } else if (initialActionLogs.length > 0) {
+            for (const l of initialActionLogs) {
+              await syncLogToCloud(l);
+            }
+          }
+        }
+
+        // (D) 共通システム状態 (金庫残高, ボーナス, 役職, 従業員)
+        const { data: stateData, error: stateErr } = await supabase
+          .from("sakura_system_state")
+          .select("*");
+
+        if (!stateErr && stateData && isMounted) {
+          stateData.forEach((row: any) => {
+            if (row.key === "vault_balance" && typeof row.value?.balance === "number") {
+              setVaultBalance(row.value.balance);
+            } else if (row.key === "weekly_bonuses" && row.value) {
+              setWeeklyBonuses(row.value);
+            } else if (row.key === "roles" && Array.isArray(row.value)) {
+              setRoles(row.value);
+            } else if (row.key === "users" && Array.isArray(row.value)) {
+              setUsers(row.value);
+            }
+          });
+        }
+
+        if (isMounted) {
+          setSyncStatus("connected");
+        }
+      } catch (err) {
+        console.error("Supabase initial load error:", err);
+        if (isMounted) setSyncStatus("offline");
+      }
     };
-    setActionLogs((prev) => [newLog, ...prev]);
-  };
+
+    fetchCloudData();
+
+    // 2. Realtime 購読
+    const channel = supabase
+      .channel("sakura_realtime_all")
+      // アイテム変更
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "sakura_items" },
+        (payload) => {
+          if (!isMounted) return;
+          const ev = payload.eventType;
+          if (ev === "INSERT" || ev === "UPDATE") {
+            const c = payload.new as any;
+            const updatedItem: Item = {
+              id: c.id,
+              code: c.code || undefined,
+              name: c.name,
+              type: c.type,
+              shopId: (c.shop_id as ShopId) || "sakura",
+              unit: c.unit,
+              current_stock: Number(c.current_stock),
+              optimal_stock: Number(c.optimal_stock ?? 10),
+              alert_threshold: Number(c.alert_threshold ?? 3),
+              cost_price: Number(c.cost_price ?? 0),
+              selling_price: Number(c.selling_price),
+              category_id: c.category_id || undefined,
+              category_name: c.category_name || undefined,
+              image_url: c.image_url || undefined,
+              recipe: c.recipe || [],
+              created_at: c.created_at,
+              updated_at: c.updated_at,
+            };
+            setItems((prev) => {
+              const idx = prev.findIndex((i) => i.id === updatedItem.id);
+              if (idx >= 0) {
+                const next = [...prev];
+                next[idx] = updatedItem;
+                return next;
+              }
+              return [updatedItem, ...prev];
+            });
+          } else if (ev === "DELETE") {
+            const oldId = (payload.old as any).id;
+            if (oldId) {
+              setItems((prev) => prev.filter((i) => i.id !== oldId));
+            }
+          }
+        }
+      )
+      // 売上伝票変更
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "sakura_sales" },
+        (payload) => {
+          if (!isMounted) return;
+          const s = payload.new as any;
+          const newSale: Sale = {
+            id: s.id,
+            shopId: (s.shop_id as ShopId) || "sakura",
+            staffName: s.staff_name,
+            staffUserId: s.staff_user_id || undefined,
+            totalAmount: Number(s.total_amount),
+            total_amount: Number(s.total_amount),
+            staff_name: s.staff_name,
+            payment_method: s.payment_method,
+            notes: s.notes || undefined,
+            items: s.items || [],
+            created_at: s.created_at,
+          };
+          setSales((prev) => {
+            if (prev.some((item) => item.id === newSale.id)) return prev;
+            return [newSale, ...prev];
+          });
+        }
+      )
+      // 操作ログ変更
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "sakura_action_logs" },
+        (payload) => {
+          if (!isMounted) return;
+          const l = payload.new as any;
+          const newLog: ActionLog = {
+            id: l.id,
+            userName: l.user_name,
+            userRole: l.user_role as Role,
+            category: l.category as ActionCategory,
+            title: l.title,
+            detail: l.detail,
+            created_at: l.created_at,
+          };
+          setActionLogs((prev) => {
+            if (prev.some((item) => item.id === newLog.id)) return prev;
+            return [newLog, ...prev];
+          });
+        }
+      )
+      // システム共通状態 (金庫、ボーナス、ロール、ユーザー)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "sakura_system_state" },
+        (payload) => {
+          if (!isMounted) return;
+          const row = payload.new as any;
+          if (!row || !row.key) return;
+          if (row.key === "vault_balance" && typeof row.value?.balance === "number") {
+            setVaultBalance(row.value.balance);
+          } else if (row.key === "weekly_bonuses" && row.value) {
+            setWeeklyBonuses(row.value);
+          } else if (row.key === "roles" && Array.isArray(row.value)) {
+            setRoles(row.value);
+          } else if (row.key === "users" && Array.isArray(row.value)) {
+            setUsers(row.value);
+          }
+        }
+      )
+      .subscribe((status) => {
+        if (!isMounted) return;
+        if (status === "SUBSCRIBED") {
+          setSyncStatus("connected");
+        } else if (status === "CLOSED" || status === "CHANNEL_ERROR") {
+          setSyncStatus("offline");
+        }
+      });
+
+    return () => {
+      isMounted = false;
+      supabase.removeChannel(channel);
+    };
+  }, []);
 
   // 1. ログイン処理 (名前とPASS)
   const login = (username: string, pass: string): { success: boolean; message?: string } => {
@@ -398,6 +802,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         created_at: new Date().toISOString(),
       };
       setActionLogs((prev) => [newLog, ...prev]);
+      syncLogToCloud(newLog);
       return { success: true };
     }
 
@@ -440,7 +845,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       roleName: finalRoleName,
       created_at: new Date().toISOString(),
     };
-    setUsers((prev) => [...prev, newUser]);
+    const updatedUsers = [...users, newUser];
+    setUsers(updatedUsers);
+    syncStateToCloud("users", updatedUsers);
+
     logAction({
       category: "user",
       title: "従業員の追加",
@@ -449,37 +857,39 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   };
 
   const updateUserPass = (userId: string, newPass: string) => {
-    setUsers((prev) =>
-      prev.map((u) => {
-        if (u.id === userId) {
-          const updated = { ...u, pass: newPass.trim() };
-          logAction({
-            category: "user",
-            title: "PASSの変更",
-            detail: `「${u.displayName}」のログインPASSを変更しました`,
-          });
-          return updated;
-        }
-        return u;
-      })
-    );
+    const updatedUsers = users.map((u) => {
+      if (u.id === userId) {
+        return { ...u, pass: newPass.trim() };
+      }
+      return u;
+    });
+    setUsers(updatedUsers);
+    syncStateToCloud("users", updatedUsers);
+
+    const u = users.find((item) => item.id === userId);
+    logAction({
+      category: "user",
+      title: "PASSの変更",
+      detail: `「${u?.displayName || userId}」のログインPASSを変更しました`,
+    });
   };
 
   const updateUserRole = (userId: string, role: Role) => {
-    setUsers((prev) =>
-      prev.map((u) => {
-        if (u.id === userId) {
-          const updated = { ...u, role };
-          logAction({
-            category: "user",
-            title: "権限の変更",
-            detail: `「${u.displayName}」の権限を「${role === "executive" ? "幹部" : "スタッフ"}」に変更しました`,
-          });
-          return updated;
-        }
-        return u;
-      })
-    );
+    const updatedUsers = users.map((u) => {
+      if (u.id === userId) {
+        return { ...u, role };
+      }
+      return u;
+    });
+    setUsers(updatedUsers);
+    syncStateToCloud("users", updatedUsers);
+
+    const u = users.find((item) => item.id === userId);
+    logAction({
+      category: "user",
+      title: "権限の変更",
+      detail: `「${u?.displayName || userId}」の権限を「${role === "executive" ? "幹部" : "スタッフ"}」に変更しました`,
+    });
   };
 
   // 役職・カスタムロールの管理
@@ -488,7 +898,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       ...roleData,
       id: `role-${Date.now().toString().slice(-5)}`,
     };
-    setRoles((prev) => [...prev, newRole]);
+    const updatedRoles = [...roles, newRole];
+    setRoles(updatedRoles);
+    syncStateToCloud("roles", updatedRoles);
+
     logAction({
       category: "role",
       title: `役職「${newRole.name}」の新規作成`,
@@ -498,27 +911,29 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const updateRole = (roleId: string, updates: Partial<CustomRole>) => {
     const target = roles.find((r) => r.id === roleId);
-    setRoles((prev) =>
-      prev.map((r) => (r.id === roleId ? { ...r, ...updates } : r))
-    );
+    const updatedRoles = roles.map((r) => (r.id === roleId ? { ...r, ...updates } : r));
+    setRoles(updatedRoles);
+    syncStateToCloud("roles", updatedRoles);
+
     // 該当ロールを持つ全スタッフの role / roleName を同期更新
-    setUsers((prev) =>
-      prev.map((u) => {
-        if (u.roleId === roleId) {
-          const updatedRoleName = updates.name !== undefined ? updates.name : u.roleName;
-          const updatedExec =
-            updates.isExecutive !== undefined
-              ? (updates.isExecutive ? "executive" : "staff")
-              : u.role;
-          return {
-            ...u,
-            role: updatedExec,
-            roleName: updatedRoleName,
-          };
-        }
-        return u;
-      })
-    );
+    const updatedUsers = users.map((u) => {
+      if (u.roleId === roleId) {
+        const updatedRoleName = updates.name !== undefined ? updates.name : u.roleName;
+        const updatedExec =
+          updates.isExecutive !== undefined
+            ? (updates.isExecutive ? "executive" : "staff")
+            : u.role;
+        return {
+          ...u,
+          role: updatedExec,
+          roleName: updatedRoleName,
+        };
+      }
+      return u;
+    });
+    setUsers(updatedUsers);
+    syncStateToCloud("users", updatedUsers);
+
     if (target) {
       logAction({
         category: "role",
@@ -542,7 +957,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         message: `この役職は現在【${userNames}】に割り当てられているため削除できません。先に別の役職へ変更してください。`,
       };
     }
-    setRoles((prev) => prev.filter((r) => r.id !== roleId));
+    const updatedRoles = roles.filter((r) => r.id !== roleId);
+    setRoles(updatedRoles);
+    syncStateToCloud("roles", updatedRoles);
+
     logAction({
       category: "role",
       title: `役職の削除`,
@@ -555,23 +973,25 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const role = roles.find((r) => r.id === roleId);
     if (!role) return;
     const targetUser = users.find((u) => u.id === userId);
-    setUsers((prev) =>
-      prev.map((u) => {
-        if (u.id === userId) {
-          const updated: StaffUser = {
-            ...u,
-            roleId: role.id,
-            roleName: role.name,
-            role: (role.isExecutive ? "executive" : "staff") as Role,
-          };
-          if (currentUser && currentUser.id === userId) {
-            setCurrentUser(updated);
-          }
-          return updated;
+
+    const updatedUsers = users.map((u) => {
+      if (u.id === userId) {
+        const updated: StaffUser = {
+          ...u,
+          roleId: role.id,
+          roleName: role.name,
+          role: (role.isExecutive ? "executive" : "staff") as Role,
+        };
+        if (currentUser && currentUser.id === userId) {
+          setCurrentUser(updated);
         }
-        return u;
-      })
-    );
+        return updated;
+      }
+      return u;
+    });
+    setUsers(updatedUsers);
+    syncStateToCloud("users", updatedUsers);
+
     logAction({
       category: "user",
       title: `従業員役職の変更`,
@@ -580,29 +1000,29 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   };
 
   const updateUserBonus = (userId: string, bonusAmount: number, note?: string) => {
-    setUsers((prev) =>
-      prev.map((u) => {
-        if (u.id === userId) {
-          const updated = {
-            ...u,
-            bonusAmount: Math.max(0, bonusAmount),
-            bonusNote: note !== undefined ? note : u.bonusNote,
-          };
-          logAction({
-            category: "bonus",
-            title: `ボーナス査定の変更 (${u.displayName})`,
-            detail: `支給額を ¥${bonusAmount.toLocaleString()} に設定しました ${note ? `[評価メモ: ${note}]` : ""}`,
-          });
-          return updated;
-        }
-        return u;
-      })
-    );
+    const updatedUsers = users.map((u) => {
+      if (u.id === userId) {
+        return {
+          ...u,
+          bonusAmount: Math.max(0, bonusAmount),
+          bonusNote: note !== undefined ? note : u.bonusNote,
+        };
+      }
+      return u;
+    });
+    setUsers(updatedUsers);
+    syncStateToCloud("users", updatedUsers);
+
+    const u = users.find((item) => item.id === userId);
+    logAction({
+      category: "bonus",
+      title: `ボーナス査定の変更 (${u?.displayName || userId})`,
+      detail: `支給額を ¥${bonusAmount.toLocaleString()} に設定しました ${note ? `[評価メモ: ${note}]` : ""}`,
+    });
   };
 
   const getStaffPerformances = (): StaffPerformance[] => {
     return users.map((u) => {
-      // 1. 売上集計 (IDまたは名前で突合)
       const userSales = sales.filter(
         (s) => s.staffUserId === u.id || s.staffName === u.displayName || s.staff_name === u.displayName
       );
@@ -616,7 +1036,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         0
       );
 
-      // 2. クラフト（料理作成）貢献度集計
       const userCraftLogs = actionLogs.filter(
         (l) => l.userName === u.displayName && l.category === "craft"
       );
@@ -633,12 +1052,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         }
       });
 
-      // 3. 在庫手動調整・補充回数
       const inventoryAdjustCount = actionLogs.filter(
         (l) => l.userName === u.displayName && l.category === "inventory"
       ).length;
 
-      // 4. 最終アクション日時
       const userLogs = actionLogs.filter((l) => l.userName === u.displayName);
       const lastActiveTime = userLogs[0]?.created_at || u.created_at;
 
@@ -662,7 +1079,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
   };
 
-  // 週次サマリー取得（日曜始まり土曜締め）
+  // 週次サマリー取得
   const getWeeklySummary = (targetWeekKey?: string): WeeklySummary => {
     const recentWeeks = getRecentWeeks(8);
     const activeWeek = targetWeekKey
@@ -671,21 +1088,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     const { weekKey, weekLabel, startDate, endDate, isCurrentWeek } = activeWeek;
 
-    // その週の売上伝票を抽出
     const weekSales = sales.filter((s) => isDateInWeek(s.created_at, startDate, endDate));
-
-    // その週のクラフト・在庫調整ログを抽出
     const weekLogs = actionLogs.filter((l) => isDateInWeek(l.created_at, startDate, endDate));
 
-    // 確定記録
     const savedRecord = weeklyBonuses[weekKey];
     const isFinalized = Boolean(savedRecord?.isFinalized);
     const finalizedAt = savedRecord?.finalizedAt;
     const finalizedBy = savedRecord?.finalizedBy;
 
-    // スタッフ別実績の計算
     const staffStats: StaffWeeklyStat[] = users.map((u) => {
-      // 1. 売上集計 (全体 + 各店舗別)
       const userSales = weekSales.filter(
         (s) => s.staffUserId === u.id || s.staffName === u.displayName || s.staff_name === u.displayName
       );
@@ -711,11 +1122,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const salesCount = userSales.length;
       const itemsSold = sakuraItemsSold + buonViaggioItemsSold;
 
-      // 2. 3割インセンティブと残り7割
       const incentive30 = Math.floor(salesAmount * 0.3);
       const storeRemaining70 = salesAmount - incentive30;
 
-      // 3. クラフト数
       const userCraftLogs = weekLogs.filter(
         (l) => l.userName === u.displayName && l.category === "craft"
       );
@@ -732,24 +1141,21 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         }
       });
 
-      // 4. 在庫調整
       const inventoryAdjustCount = weekLogs.filter(
         (l) => l.userName === u.displayName && l.category === "inventory"
       ).length;
 
-      // 5. 保存ボーナス & 支払状態
       const savedUserBonus = savedRecord?.bonuses?.[u.id];
       const bonusAmount = savedUserBonus ? savedUserBonus.amount : (u.bonusAmount || 0);
       const bonusNote = savedUserBonus ? savedUserBonus.note : (u.bonusNote || "");
       const isPaid = savedUserBonus ? Boolean(savedUserBonus.isPaid) : false;
       const paidAt = savedUserBonus?.paidAt;
 
-      // 6. 過去の確定済み未払い合算（キャリーオーバー）の集計
       let previousUnpaidBonusTotal = 0;
       const previousUnpaidWeeks: { weekKey: string; weekLabel: string; amount: number }[] = [];
 
       Object.entries(weeklyBonuses).forEach(([pastKey, pastRecord]) => {
-        if (pastKey === weekKey) return; // 現在選択中の週は除外
+        if (pastKey === weekKey) return;
         if (pastRecord.isFinalized) {
           const pastStaffBonus = pastRecord.bonuses?.[u.id];
           if (pastStaffBonus && pastStaffBonus.amount > 0 && !pastStaffBonus.isPaid) {
@@ -764,7 +1170,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         }
       });
 
-      // 合計支払い予定額 (今週決定分 + 過去未払い分)
       const totalDueAmount = bonusAmount + previousUnpaidBonusTotal;
 
       return {
@@ -797,7 +1202,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       };
     });
 
-    // 店舗別実績の集計
     const sakuraSalesTotal = staffStats.reduce((sum, s) => sum + s.sakuraSalesAmount, 0);
     const sakuraIncentive30 = Math.floor(sakuraSalesTotal * 0.3);
     const sakuraStoreRemaining70 = sakuraSalesTotal - sakuraIncentive30;
@@ -806,7 +1210,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const bvIncentive30 = Math.floor(bvSalesTotal * 0.3);
     const bvStoreRemaining70 = bvSalesTotal - bvIncentive30;
 
-    // 店舗全体合計
     const totalSales = staffStats.reduce((sum, s) => sum + s.salesAmount, 0);
     const totalIncentive30 = staffStats.reduce((sum, s) => sum + s.incentive30, 0);
     const totalStoreRemaining70 = staffStats.reduce((sum, s) => sum + s.storeRemaining70, 0);
@@ -856,7 +1259,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   ) => {
     setWeeklyBonuses((prev) => {
       const existing = prev[weekKey] || { isFinalized: false, bonuses: {} };
-      return {
+      const updated = {
         ...prev,
         [weekKey]: {
           ...existing,
@@ -866,6 +1269,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           },
         },
       };
+      syncStateToCloud("weekly_bonuses", updated);
+      return updated;
     });
   };
 
@@ -875,7 +1280,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const nowIso = new Date().toISOString();
     setWeeklyBonuses((prev) => {
       const existing = prev[weekKey] || { isFinalized: false, bonuses: {} };
-      return {
+      const updated = {
         ...prev,
         [weekKey]: {
           ...existing,
@@ -884,6 +1289,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           finalizedBy: caller,
         },
       };
+      syncStateToCloud("weekly_bonuses", updated);
+      return updated;
     });
     logAction({
       category: "bonus",
@@ -892,18 +1299,20 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
   };
 
-  // 週ボーナス確定の解除（編集再開用）
+  // 週ボーナス確定の解除
   const unfinalizeWeeklyBonus = (weekKey: string) => {
     setWeeklyBonuses((prev) => {
       const existing = prev[weekKey];
       if (!existing) return prev;
-      return {
+      const updated = {
         ...prev,
         [weekKey]: {
           ...existing,
           isFinalized: false,
         },
       };
+      syncStateToCloud("weekly_bonuses", updated);
+      return updated;
     });
     logAction({
       category: "bonus",
@@ -920,19 +1329,26 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const currentBonusRecord = weeklyBonuses[weekKey]?.bonuses?.[userId];
     const bonusAmount = currentBonusRecord ? currentBonusRecord.amount : 0;
 
-    // 金庫残高への自動連動: 支払済にした場合は金庫から出金、未払いに戻した場合は金庫へ返還
     if (bonusAmount > 0) {
       if (isPaid) {
-        setVaultBalance((prev) => Math.max(0, prev - bonusAmount));
+        setVaultBalance((prev) => {
+          const next = Math.max(0, prev - bonusAmount);
+          syncStateToCloud("vault_balance", { balance: next });
+          return next;
+        });
       } else {
-        setVaultBalance((prev) => prev + bonusAmount);
+        setVaultBalance((prev) => {
+          const next = prev + bonusAmount;
+          syncStateToCloud("vault_balance", { balance: next });
+          return next;
+        });
       }
     }
 
     setWeeklyBonuses((prev) => {
       const existing = prev[weekKey] || { isFinalized: false, bonuses: {} };
       const currentStaff = existing.bonuses?.[userId] || { amount: 0 };
-      return {
+      const updated = {
         ...prev,
         [weekKey]: {
           ...existing,
@@ -946,7 +1362,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           },
         },
       };
+      syncStateToCloud("weekly_bonuses", updated);
+      return updated;
     });
+
     const targetUser = users.find((u) => u.id === userId);
     logAction({
       category: "bonus",
@@ -963,7 +1382,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  // 特定スタッフの過去の未払い週ボーナスを一括精算（すべて支払済にする）
+  // 特定スタッフの過去の未払い週ボーナスを一括精算
   const markAllPastBonusesAsPaid = (userId: string) => {
     const caller = currentUser ? currentUser.displayName : "kein";
     const nowIso = new Date().toISOString();
@@ -977,7 +1396,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
 
     if (totalUnpaidAmount > 0) {
-      setVaultBalance((prev) => Math.max(0, prev - totalUnpaidAmount));
+      setVaultBalance((prev) => {
+        const next = Math.max(0, prev - totalUnpaidAmount);
+        syncStateToCloud("vault_balance", { balance: next });
+        return next;
+      });
     }
 
     setWeeklyBonuses((prev) => {
@@ -1000,8 +1423,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           }
         }
       });
+      syncStateToCloud("weekly_bonuses", updated);
       return updated;
     });
+
     const targetUser = users.find((u) => u.id === userId);
     logAction({
       category: "bonus",
@@ -1024,7 +1449,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const oldBalance = vaultBalance;
     const cleanBalance = Math.max(0, Math.floor(newBalance));
     const delta = cleanBalance - oldBalance;
+
     setVaultBalance(cleanBalance);
+    syncStateToCloud("vault_balance", { balance: cleanBalance });
+
     logAction({
       category: "vault",
       title: `金庫残高の手動調整 (現在: ¥${cleanBalance.toLocaleString()})`,
@@ -1039,7 +1467,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       alert("管理者 kein は削除できません。");
       return;
     }
-    setUsers((prev) => prev.filter((u) => u.id !== userId));
+    const updatedUsers = users.filter((u) => u.id !== userId);
+    setUsers(updatedUsers);
+    syncStateToCloud("users", updatedUsers);
+
     logAction({
       category: "user",
       title: "従業員の削除",
@@ -1051,7 +1482,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const products = items.filter((i) => i.type === "product");
   const ingredients = items.filter((i) => i.type === "ingredient");
 
-  // 3. メイン画面: 「売る」処理 (商品の在庫を減らして売上を計上)
+  // 3. メイン画面: 「売る」処理
   const sellProducts = (
     quantities: { [itemId: string]: number },
     shopId?: ShopId
@@ -1076,7 +1507,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }
     }
 
-    // 1. 売上集計と明細作成（setItemsの外で1回のみ計算して二重計上を防ぐ）
     let totalSaleAmount = 0;
     const saleItemsList: { itemId: string; itemName: string; quantity: number; unitPrice: number; subtotal: number }[] = [];
     let determinedShopId: ShopId | undefined = shopId;
@@ -1098,20 +1528,24 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       });
     }
 
-    // 2. 在庫の減算（純粋なstate更新）
+    // 在庫の減算（ローカル ＆ クラウド）
+    const updatedItemsList: Item[] = [];
     setItems((prevItems) => {
       return prevItems.map((item) => {
         const orderQty = quantities[item.id] || 0;
         if (orderQty > 0) {
-          return {
+          const updated = {
             ...item,
             current_stock: item.current_stock - orderQty,
             updated_at: new Date().toISOString(),
           };
+          updatedItemsList.push(updated);
+          return updated;
         }
         return item;
       });
     });
+    syncItemsBatchToCloud(updatedItemsList);
 
     const finalShopId: ShopId = determinedShopId || "sakura";
     const shopName = finalShopId === "buon_viaggio" ? "Buon viaggio" : "和食さくら";
@@ -1129,14 +1563,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     };
 
     setSales((prev) => [newSale, ...prev]);
+    syncSaleToCloud(newSale);
 
-    // 3. ゲーム内金庫残高へ「店舗手元純残り (7割)」を自動反映
-    // ※ インセンティブ3割はゲーム内でスタッフへ手渡しするため、金庫には残りの7割が入金されます
+    // 金庫残高への7割入金
     const incentive30 = Math.floor(totalSaleAmount * 0.3);
     const storeRemaining70 = totalSaleAmount - incentive30;
 
     if (storeRemaining70 > 0) {
-      setVaultBalance((prev) => prev + storeRemaining70);
+      setVaultBalance((prev) => {
+        const next = prev + storeRemaining70;
+        syncStateToCloud("vault_balance", { balance: next });
+        return next;
+      });
+
       logAction({
         category: "vault",
         title: `【${shopName}】金庫売上入金 (店舗7割: +¥${storeRemaining70.toLocaleString()})`,
@@ -1158,7 +1597,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     };
   };
 
-  // 4. メイン画面: 「作成 (在庫を増やす)」処理 (素材を自動減算して商品在庫をUP)
+  // 4. メイン画面: 「作成 (在庫を増やす)」処理
   const craftProducts = (
     quantities: { [itemId: string]: number },
     shopId?: ShopId
@@ -1171,7 +1610,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       return { success: false, message: "作成する商品の個数を指定してください。" };
     }
 
-    // 全作成に必要な素材の合計量を計算
     const requiredIngredients: { [ingId: string]: { name: string; needed: number } } = {};
     let determinedShopId: ShopId | undefined = shopId;
 
@@ -1182,7 +1620,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         determinedShopId = prod.shopId;
       }
       if (!prod.recipe || prod.recipe.length === 0) {
-        // レシピ未設定の商品でも作成可能（素材消費なし）
         continue;
       }
 
@@ -1197,7 +1634,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }
     }
 
-    // 素材の在庫チェック
+    // 素材在庫チェック
     for (const [ingId, req] of Object.entries(requiredIngredients)) {
       const ingItem = items.find((i) => i.id === ingId);
       const currentStock = ingItem ? ingItem.current_stock : 0;
@@ -1209,37 +1646,40 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }
     }
 
-    // 素材の在庫減算 ＆ 商品の在庫加算
+    // 素材減算 ＆ 商品加算
+    const updatedItemsList: Item[] = [];
     setItems((prevItems) => {
       return prevItems.map((item) => {
-        // 1) 商品の在庫を増やす
         const craftQty = quantities[item.id] || 0;
         if (craftQty > 0) {
-          return {
+          const updated = {
             ...item,
             current_stock: item.current_stock + craftQty,
             updated_at: new Date().toISOString(),
           };
+          updatedItemsList.push(updated);
+          return updated;
         }
 
-        // 2) 素材の在庫を減らす
         const consumed = requiredIngredients[item.id];
         if (consumed) {
-          return {
+          const updated = {
             ...item,
             current_stock: item.current_stock - consumed.needed,
             updated_at: new Date().toISOString(),
           };
+          updatedItemsList.push(updated);
+          return updated;
         }
 
         return item;
       });
     });
+    syncItemsBatchToCloud(updatedItemsList);
 
     const finalShopId: ShopId = determinedShopId || "sakura";
     const shopName = finalShopId === "buon_viaggio" ? "Buon viaggio" : "和食さくら";
 
-    // ログ記録
     const craftedList = craftEntries
       .map(([id, qty]) => {
         const it = items.find((i) => i.id === id);
@@ -1272,6 +1712,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       updated_at: new Date().toISOString(),
     };
     setItems((prev) => [newItem, ...prev]);
+    syncItemToCloud(newItem);
+
     logAction({
       category: "product",
       title: `新規${itemData.type === "product" ? "商品" : "素材"}の登録`,
@@ -1281,9 +1723,21 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const updateItem = (itemId: string, updates: Partial<Item>) => {
     const target = items.find((i) => i.id === itemId);
+    let updatedItem: Item | null = null;
+
     setItems((prev) =>
-      prev.map((i) => (i.id === itemId ? { ...i, ...updates, updated_at: new Date().toISOString() } : i))
+      prev.map((i) => {
+        if (i.id === itemId) {
+          updatedItem = { ...i, ...updates, updated_at: new Date().toISOString() };
+          return updatedItem;
+        }
+        return i;
+      })
     );
+    if (updatedItem) {
+      syncItemToCloud(updatedItem);
+    }
+
     if (target) {
       logAction({
         category: "product",
@@ -1297,7 +1751,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const target = items.find((i) => i.id === itemId);
     if (!target) return { success: false, message: "対象の品目が見つかりません。" };
 
-    // レシピで素材として使われているかチェック
     const usedInRecipes = items.filter(
       (p) => p.recipe && p.recipe.some((r) => r.ingredient_id === itemId)
     );
@@ -1310,6 +1763,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
 
     setItems((prev) => prev.filter((i) => i.id !== itemId));
+    deleteItemFromCloud(itemId);
+
     logAction({
       category: "product",
       title: `${target.type === "product" ? "料理商品" : "素材"}の削除`,
@@ -1320,6 +1775,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   };
 
   const updatePrice = (itemId: string, newPrice: number) => {
+    let updatedItem: Item | null = null;
     setItems((prev) =>
       prev.map((i) => {
         if (i.id === itemId) {
@@ -1328,14 +1784,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             title: "販売価格の変更",
             detail: `「${i.name}」の値段を ¥${i.selling_price.toLocaleString()} → ¥${newPrice.toLocaleString()} に変更しました`,
           });
-          return { ...i, selling_price: newPrice, updated_at: new Date().toISOString() };
+          updatedItem = { ...i, selling_price: newPrice, updated_at: new Date().toISOString() };
+          return updatedItem;
         }
         return i;
       })
     );
+    if (updatedItem) syncItemToCloud(updatedItem);
   };
 
   const updateRecipe = (itemId: string, recipe: RecipeRequirement[]) => {
+    let updatedItem: Item | null = null;
     setItems((prev) =>
       prev.map((i) => {
         if (i.id === itemId) {
@@ -1345,14 +1804,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             title: `レシピの変更 (${i.name})`,
             detail: `必要素材を設定: ${recipeDesc || "なし"}`,
           });
-          return { ...i, recipe, updated_at: new Date().toISOString() };
+          updatedItem = { ...i, recipe, updated_at: new Date().toISOString() };
+          return updatedItem;
         }
         return i;
       })
     );
+    if (updatedItem) syncItemToCloud(updatedItem);
   };
 
   const updateItemImage = (itemId: string, imageUrl: string) => {
+    let updatedItem: Item | null = null;
     setItems((prev) =>
       prev.map((i) => {
         if (i.id === itemId) {
@@ -1361,14 +1823,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             title: `画像の更新 (${i.name})`,
             detail: `商品・素材の画像を更新しました`,
           });
-          return { ...i, image_url: imageUrl, updated_at: new Date().toISOString() };
+          updatedItem = { ...i, image_url: imageUrl, updated_at: new Date().toISOString() };
+          return updatedItem;
         }
         return i;
       })
     );
+    if (updatedItem) syncItemToCloud(updatedItem);
   };
 
   const adjustStock = (itemId: string, newStock: number, reason: string = "手動調整") => {
+    let updatedItem: Item | null = null;
     setItems((prev) =>
       prev.map((i) => {
         if (i.id === itemId) {
@@ -1377,16 +1842,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             title: `在庫数の手動調整 (${i.name})`,
             detail: `在庫数を ${i.current_stock} → ${newStock}${i.unit} に調整 (理由: ${reason})`,
           });
-          return { ...i, current_stock: newStock, updated_at: new Date().toISOString() };
+          updatedItem = { ...i, current_stock: newStock, updated_at: new Date().toISOString() };
+          return updatedItem;
         }
         return i;
       })
     );
+    if (updatedItem) syncItemToCloud(updatedItem);
   };
 
   return (
     <AppContext.Provider
       value={{
+        syncStatus,
         currentUser,
         isAuthenticated: Boolean(currentUser),
         login,
@@ -1430,6 +1898,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           const totalAmt = saleData.total_amount || saleData.totalAmount || 0;
           const newSale: Sale = {
             id: `sale-${Date.now().toString().slice(-6)}`,
+            shopId: "sakura",
             staffName: currentUser ? currentUser.displayName : "店員",
             staffUserId: currentUser ? currentUser.id : undefined,
             totalAmount: totalAmt,
@@ -1447,6 +1916,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             created_at: new Date().toISOString(),
           };
           setSales((prev) => [newSale, ...prev]);
+          syncSaleToCloud(newSale);
           return newSale;
         },
         recordStockTransaction: (params: any) => {
