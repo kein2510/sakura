@@ -15,6 +15,8 @@ import {
   User,
   Store,
   Radio,
+  Trash2,
+  Undo2,
 } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import { formatCurrency } from "@/lib/utils";
@@ -22,7 +24,7 @@ import { ShopId, SHOPS } from "@/types";
 import { supabase } from "@/lib/supabase";
 
 export default function MainPage() {
-  const { products, ingredients, sellProducts, craftProducts, sales, users, refreshData } = useApp();
+  const { items, products, ingredients, sellProducts, craftProducts, sales, users, refreshData, cancelSale, rollbackCraftItems } = useApp();
 
   // 現在選択中の店舗 ("sakura" | "buon_viaggio")
   const [selectedShopId, setSelectedShopId] = useState<ShopId>("sakura");
@@ -34,6 +36,13 @@ export default function MainPage() {
     message: string;
   } | null>(null);
   const [realtimeNotice, setRealtimeNotice] = useState<string | null>(null);
+
+  // 直前のクラフト情報（取り消し用）
+  const [lastCraft, setLastCraft] = useState<{
+    quantities: Record<string, number>;
+    shopId: ShopId;
+    names: string[];
+  } | null>(null);
 
   // メイン画面の Supabase Realtime サブスクリプション
   useEffect(() => {
@@ -148,12 +157,60 @@ export default function MainPage() {
       return;
     }
 
-    const result = craftProducts(quantities, selectedShopId);
+    const currentQuantities = { ...quantities };
+    const currentShop = selectedShopId;
+    const craftedNames = Object.entries(currentQuantities)
+      .filter(([_, q]) => q > 0)
+      .map(([id, q]) => {
+        const it = items.find((i) => i.id === id);
+        return `${it?.name || "商品"} ×${q}`;
+      });
+
+    const result = craftProducts(currentQuantities, currentShop);
     if (result.success) {
+      setLastCraft({
+        quantities: currentQuantities,
+        shopId: currentShop,
+        names: craftedNames,
+      });
       setNotification({ type: "success", message: result.message });
       setQuantities({});
     } else {
       setNotification({ type: "error", message: result.message });
+    }
+  };
+
+  // 直前のクラフト作成を取り消す（在庫減算 ＆ 素材在庫復元）
+  const handleRollbackLastCraft = () => {
+    if (!lastCraft) return;
+    if (
+      window.confirm(
+        `直前に作成した処理を取り消しますか？\n\n【取り消し対象】\n${lastCraft.names.join("、")}\n\n・完成商品の在庫を減算します\n・消費された素材在庫を元通り復元します`
+      )
+    ) {
+      const result = rollbackCraftItems(lastCraft.quantities, lastCraft.shopId);
+      if (result.success) {
+        setNotification({ type: "success", message: result.message });
+        setLastCraft(null);
+      } else {
+        setNotification({ type: "error", message: result.message });
+      }
+    }
+  };
+
+  // 売上伝票を取り消す（販売在庫復元 ＆ 金庫店舗入金分の減額）
+  const handleCancelSale = async (saleId: string, amount: number) => {
+    if (
+      window.confirm(
+        `この売上伝票を取り消しますか？\n伝票ID: ${saleId} (金額: ${formatCurrency(amount)})\n\n・販売した商品の在庫が元の個数に戻ります\n・金庫に入金された売上金（店舗手元残り70%）が自動で戻されます`
+      )
+    ) {
+      const result = await cancelSale(saleId);
+      if (result.success) {
+        setNotification({ type: "success", message: result.message });
+      } else {
+        setNotification({ type: "error", message: result.message });
+      }
     }
   };
 
@@ -316,6 +373,36 @@ export default function MainPage() {
               >
                 ✕
               </button>
+            </div>
+          )}
+
+          {/* 直前のクラフト作成 取り消しバー */}
+          {lastCraft && (
+            <div className="p-3 rounded-xl border border-amber-500/40 bg-amber-950/30 text-xs font-bold flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-lg">
+              <div className="flex items-center gap-2 text-amber-300">
+                <RotateCcw className="w-4 h-4 text-amber-400 shrink-0" />
+                <span>
+                  直前に作成した商品: <strong className="text-white underline">{lastCraft.names.join("、")}</strong>
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleRollbackLastCraft}
+                  className="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 active:scale-95 text-white text-xs font-black shadow-md flex items-center gap-1.5 transition-all cursor-pointer"
+                >
+                  <Undo2 className="w-3.5 h-3.5" />
+                  <span>作成を取り消す (在庫・素材を戻す)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLastCraft(null)}
+                  className="text-stone-400 hover:text-white text-xs px-2 py-1"
+                  title="閉じる"
+                >
+                  ✕
+                </button>
+              </div>
             </div>
           )}
         </div>
@@ -660,16 +747,28 @@ export default function MainPage() {
                     </div>
                   </div>
 
-                  {/* 合計売上金額 */}
-                  <div className="text-right sm:text-right">
-                    <span className="text-[10px] text-stone-400 block">売上金額</span>
-                    <span
-                      className={`text-lg font-black ${
-                        isBV ? "text-emerald-400" : "text-rose-400"
-                      }`}
+                  {/* 合計売上金額 ＆ 取消ボタン */}
+                  <div className="flex items-center gap-3">
+                    <div className="text-right sm:text-right">
+                      <span className="text-[10px] text-stone-400 block">売上金額</span>
+                      <span
+                        className={`text-lg font-black ${
+                          isBV ? "text-emerald-400" : "text-rose-400"
+                        }`}
+                      >
+                        {formatCurrency(sale.totalAmount ?? sale.total_amount ?? 0)}
+                      </span>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => handleCancelSale(sale.id, sale.totalAmount ?? sale.total_amount ?? 0)}
+                      title="この売上伝票を取り消す（在庫・金庫残高を元に戻す）"
+                      className="px-2.5 py-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/25 active:scale-95 text-rose-400 hover:text-rose-300 border border-rose-500/30 transition-all flex items-center gap-1 text-xs font-bold shrink-0 cursor-pointer shadow-sm"
                     >
-                      {formatCurrency(sale.totalAmount ?? sale.total_amount ?? 0)}
-                    </span>
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span className="hidden sm:inline">取消</span>
+                    </button>
                   </div>
                 </div>
               );

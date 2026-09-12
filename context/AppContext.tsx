@@ -146,6 +146,14 @@ interface AppContextType {
   vaultBalance: number;
   updateVaultBalance: (newBalance: number, reason?: string) => void;
 
+  // 誤操作取り消し・ロールバック機能
+  cancelSale: (saleId: string) => { success: boolean; message: string };
+  rollbackCraftItems: (
+    quantities: { [itemId: string]: number },
+    shopId?: ShopId
+  ) => { success: boolean; message: string };
+  cancelCraftByLog: (logId: string) => { success: boolean; message: string };
+
   // クラウド強制再同期
   refreshData: () => Promise<void>;
 
@@ -206,25 +214,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
   });
 
-  const [currentUser, setCurrentUser] = useState<StaffUser | null>(() => {
-    if (typeof window !== "undefined") {
-      const saved = localStorage.getItem("fivem_sakura_session");
-      if (saved) {
-        try {
-          return JSON.parse(saved);
-        } catch {
-          // ignore
-        }
-      }
-    }
-    const keinUser = mockStaffUsers[0];
-    return {
-      ...keinUser,
-      role: "executive",
-      roleId: "role-owner",
-      roleName: "店主 (オーナー)",
-    };
-  });
+  // サイトを開いたときは常に未ログイン状態（ログイン画面を表示）
+  const [currentUser, setCurrentUser] = useState<StaffUser | null>(null);
 
   // アイテム・在庫状態
   const [items, setItems] = useState<Item[]>(() => {
@@ -1751,6 +1742,183 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     };
   };
 
+  // 誤操作取り消し: 売上伝票の取り消し（在庫復元 ＆ 金庫7割出金）
+  const cancelSale = (saleId: string): { success: boolean; message: string } => {
+    const sale = sales.find((s) => s.id === saleId);
+    if (!sale) {
+      return { success: false, message: "対象の売上伝票が見つかりません。" };
+    }
+
+    // 1. 売った商品在庫を元に戻す（加算復元）
+    const restoredItems: Item[] = [];
+    setItems((prevItems) => {
+      return prevItems.map((item) => {
+        const soldItem = sale.items.find((si) => (si.itemId || si.item_id) === item.id);
+        if (soldItem && soldItem.quantity > 0) {
+          const restored = {
+            ...item,
+            current_stock: item.current_stock + soldItem.quantity,
+            updated_at: new Date().toISOString(),
+          };
+          restoredItems.push(restored);
+          return restored;
+        }
+        return item;
+      });
+    });
+    syncItemsBatchToCloud(restoredItems);
+
+    // 2. 金庫から売上7割（店舗手元純残り）を差し引く
+    const totalAmount = sale.totalAmount ?? sale.total_amount ?? 0;
+    const incentive30 = Math.floor(totalAmount * 0.3);
+    const storeRemaining70 = totalAmount - incentive30;
+
+    if (storeRemaining70 > 0) {
+      setVaultBalance((prev) => {
+        const next = Math.max(0, prev - storeRemaining70);
+        syncStateToCloud("vault_balance", { balance: next });
+        return next;
+      });
+    }
+
+    // 3. 売上伝票の削除
+    setSales((prev) => prev.filter((s) => s.id !== saleId));
+    if (supabase) {
+      supabase.from("sakura_sales").delete().eq("id", saleId).then();
+    }
+
+    // 4. 操作ログの記録
+    const caller = currentUser ? currentUser.displayName : "店員";
+    const shopName = sale.shopId === "buon_viaggio" ? "Buon viaggio" : "和食さくら";
+    const itemSummary = sale.items.map((it) => `${it.itemName || it.item_name}×${it.quantity}`).join(", ");
+
+    logAction({
+      category: "sale",
+      title: `【${shopName}】売上伝票 #${sale.id} の取り消し`,
+      detail: `「${caller}」が売上伝票を取り消しました。商品在庫を復元（${itemSummary}）、金庫から売上7割分 (-¥${storeRemaining70.toLocaleString()}) を差し引きました`,
+    });
+
+    return {
+      success: true,
+      message: `売上伝票 #${sale.id} を取り消しました！商品在庫を元に戻し、金庫の売上分 (¥${storeRemaining70.toLocaleString()}) を減額しました。`,
+    };
+  };
+
+  // 誤操作取り消し: クラフト作成の取り消し（完成品在庫を減らし、消費した素材を元に戻す）
+  const rollbackCraftItems = (
+    quantities: { [itemId: string]: number },
+    shopId?: ShopId
+  ): { success: boolean; message: string } => {
+    const entries = Object.entries(quantities).filter(([_, qty]) => qty > 0);
+    if (entries.length === 0) {
+      return { success: false, message: "取り消す商品の個数を指定してください。" };
+    }
+
+    // 1. レシピから消費した素材量を逆算
+    const restoredIngredients: { [ingId: string]: { name: string; amount: number } } = {};
+    for (const [itemId, qty] of entries) {
+      const prod = items.find((i) => i.id === itemId);
+      if (!prod || !prod.recipe) continue;
+      for (const req of prod.recipe) {
+        if (!restoredIngredients[req.ingredient_id]) {
+          restoredIngredients[req.ingredient_id] = { name: req.ingredient_name, amount: 0 };
+        }
+        restoredIngredients[req.ingredient_id].amount += req.quantity * qty;
+      }
+    }
+
+    // 2. 商品在庫を減算 ＆ 素材在庫を加算（復元）
+    const updatedItemsList: Item[] = [];
+    setItems((prevItems) => {
+      return prevItems.map((item) => {
+        const craftQty = quantities[item.id] || 0;
+        if (craftQty > 0) {
+          const updated = {
+            ...item,
+            current_stock: Math.max(0, item.current_stock - craftQty),
+            updated_at: new Date().toISOString(),
+          };
+          updatedItemsList.push(updated);
+          return updated;
+        }
+
+        const restored = restoredIngredients[item.id];
+        if (restored) {
+          const updated = {
+            ...item,
+            current_stock: item.current_stock + restored.amount,
+            updated_at: new Date().toISOString(),
+          };
+          updatedItemsList.push(updated);
+          return updated;
+        }
+
+        return item;
+      });
+    });
+    syncItemsBatchToCloud(updatedItemsList);
+
+    const caller = currentUser ? currentUser.displayName : "店員";
+    const finalShopId: ShopId = shopId || "sakura";
+    const shopName = finalShopId === "buon_viaggio" ? "Buon viaggio" : "和食さくら";
+
+    const rolledList = entries
+      .map(([id, qty]) => {
+        const it = items.find((i) => i.id === id);
+        return `${it?.name}×${qty}`;
+      })
+      .join(", ");
+
+    const restoredList = Object.values(restoredIngredients)
+      .map((c) => `${c.name}×${c.amount}`)
+      .join(", ");
+
+    logAction({
+      category: "craft",
+      title: `【${shopName}】クラフト作成の取り消し (${rolledList})`,
+      detail: `「${caller}」がクラフトを取り消しました。商品在庫を減算し、消費した素材を元に戻しました (${restoredList || "なし"})`,
+    });
+
+    return {
+      success: true,
+      message: `クラフト作成を取り消しました！商品在庫を減らし、消費した素材（${restoredList || "なし"}）を完全に復元しました。`,
+    };
+  };
+
+  // 操作ログからクラフトを取り消す
+  const cancelCraftByLog = (logId: string): { success: boolean; message: string } => {
+    const log = actionLogs.find((l) => l.id === logId);
+    if (!log) {
+      return { success: false, message: "対象のログが見つかりません。" };
+    }
+
+    // ログタイトルから商品名と数量を抽出 (例: "桜特上握り寿司×3")
+    const toRollback: { [itemId: string]: number } = {};
+    for (const item of items) {
+      if (item.type === "product") {
+        const regex = new RegExp(`${item.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}×(\\d+)`);
+        const match = log.title.match(regex);
+        if (match) {
+          toRollback[item.id] = parseInt(match[1], 10) || 1;
+        }
+      }
+    }
+
+    if (Object.keys(toRollback).length === 0) {
+      return { success: false, message: "ログからクラフト商品の特定ができませんでした。" };
+    }
+
+    const res = rollbackCraftItems(toRollback);
+    if (res.success) {
+      // 当該ログも削除
+      setActionLogs((prev) => prev.filter((l) => l.id !== logId));
+      if (supabase) {
+        supabase.from("sakura_action_logs").delete().eq("id", logId).then();
+      }
+    }
+    return res;
+  };
+
   // 5. 幹部設定機能
   const addItem = (itemData: Omit<Item, "id" | "created_at" | "updated_at">) => {
     const newItem: Item = {
@@ -1942,6 +2110,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         logAction,
         vaultBalance,
         updateVaultBalance,
+        cancelSale,
+        rollbackCraftItems,
+        cancelCraftByLog,
         refreshData,
         addSale: async (saleData: any): Promise<Sale> => {
           const totalAmt = saleData.total_amount || saleData.totalAmount || 0;

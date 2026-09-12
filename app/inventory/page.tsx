@@ -16,6 +16,7 @@ import {
   Utensils,
   Layers,
   Radio,
+  Undo2,
 } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import { formatCurrency } from "@/lib/utils";
@@ -23,13 +24,29 @@ import { Item, ShopId, SHOPS } from "@/types";
 import { supabase } from "@/lib/supabase";
 
 export default function InventoryPage() {
-  const { items, products, ingredients, adjustStock, actionLogs, refreshData } = useApp();
+  const { items, products, ingredients, adjustStock, actionLogs, refreshData, cancelCraftByLog } = useApp();
   const [selectedTab, setSelectedTab] = useState<"all" | "sakura" | "buon_viaggio" | "ingredient">("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [adjustingItem, setAdjustingItem] = useState<Item | null>(null);
   const [newStockInput, setNewStockInput] = useState<number>(0);
   const [adjustReason, setAdjustReason] = useState<string>("仕入れ・補充");
   const [realtimeNotice, setRealtimeNotice] = useState<string | null>(null);
+
+  const handleCancelCraftLog = (logId: string, title: string) => {
+    if (
+      window.confirm(
+        `この作成処理を取り消しますか？\n\n対象: ${title}\n\n【取り消し処理内容】\n・完成商品の在庫を減算します\n・消費された素材在庫を元通り復元します`
+      )
+    ) {
+      const res = cancelCraftByLog(logId);
+      if (res.success) {
+        setRealtimeNotice(res.message);
+      } else {
+        alert(res.message);
+      }
+      setTimeout(() => setRealtimeNotice(null), 4000);
+    }
+  };
 
   // 全体在庫画面の Supabase Realtime サブスクリプション
   useEffect(() => {
@@ -593,13 +610,26 @@ export default function InventoryPage() {
                   </div>
                   <p className="text-[11px] text-stone-400 mt-1">{log.detail}</p>
                 </div>
-                <span className="text-[10px] text-stone-500 shrink-0 ml-3">
-                  {new Date(log.created_at).toLocaleTimeString("ja-JP", {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                    second: "2-digit",
-                  })}
-                </span>
+                <div className="flex items-center gap-2.5 shrink-0 ml-3">
+                  <span className="text-[10px] text-stone-500">
+                    {new Date(log.created_at).toLocaleTimeString("ja-JP", {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                      second: "2-digit",
+                    })}
+                  </span>
+                  {log.category === "craft" && (
+                    <button
+                      type="button"
+                      onClick={() => handleCancelCraftLog(log.id, log.title)}
+                      title="この作成処理を取り消す（在庫減算 ＆ 素材在庫を元に戻す）"
+                      className="px-2 py-1 rounded-lg bg-amber-500/10 hover:bg-amber-500/25 active:scale-95 text-amber-300 hover:text-amber-200 border border-amber-500/30 transition-all flex items-center gap-1 text-[10px] font-bold cursor-pointer"
+                    >
+                      <Undo2 className="w-3 h-3" />
+                      <span>取消</span>
+                    </button>
+                  )}
+                </div>
               </div>
             ))
           )}

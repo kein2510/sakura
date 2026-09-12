@@ -15,6 +15,9 @@ import {
   Award,
   Sparkles,
   Radio,
+  Trash2,
+  AlertCircle,
+  CheckCircle2,
 } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import { formatCurrency, formatDate } from "@/lib/utils";
@@ -23,11 +26,28 @@ import { PaymentMethod } from "@/types";
 import { supabase } from "@/lib/supabase";
 
 export default function SalesPage() {
-  const { sales, items, refreshData } = useApp();
+  const { sales, items, refreshData, cancelSale } = useApp();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [filterMethod, setFilterMethod] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [realtimeNotice, setRealtimeNotice] = useState<string | null>(null);
+  const [actionNotice, setActionNotice] = useState<{ type: "success" | "error"; message: string } | null>(null);
+
+  const handleCancelSale = async (saleId: string, amount: number) => {
+    if (
+      window.confirm(
+        `この売上伝票を取り消しますか？\n伝票番号: ${saleId}\n売上金額: ${formatCurrency(amount)}\n\n【取り消し処理内容】\n・販売された商品の在庫が元の個数に戻ります\n・金庫に入金された売上金（店舗取り分70%）が自動で戻されます`
+      )
+    ) {
+      const res = await cancelSale(saleId);
+      if (res.success) {
+        setActionNotice({ type: "success", message: res.message });
+      } else {
+        setActionNotice({ type: "error", message: res.message });
+      }
+      setTimeout(() => setActionNotice(null), 5000);
+    }
+  };
 
   // 売上画面の Supabase Realtime サブスクリプション (.channel() / .on())
   useEffect(() => {
@@ -133,6 +153,24 @@ export default function SalesPage() {
         </div>
       )}
 
+      {/* 操作結果通知バナー */}
+      {actionNotice && (
+        <div
+          className={`p-3 rounded-xl border text-xs font-bold flex items-center gap-2 shadow-sm ${
+            actionNotice.type === "success"
+              ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+              : "bg-rose-50 border-rose-200 text-rose-800"
+          }`}
+        >
+          {actionNotice.type === "success" ? (
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+          ) : (
+            <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+          )}
+          <span>{actionNotice.message}</span>
+        </div>
+      )}
+
       {/* サマリーカード */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-white p-5 rounded-2xl border border-stone-200 shadow-xs">
@@ -213,12 +251,13 @@ export default function SalesPage() {
                   <th className="py-3 px-3">担当者</th>
                   <th className="py-3 px-3">決済</th>
                   <th className="py-3 px-4 text-right">金額 (税込)</th>
+                  <th className="py-3 px-3 text-center">操作</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-stone-100">
                 {filteredSales.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="text-center py-10 text-stone-400">
+                    <td colSpan={7} className="text-center py-10 text-stone-400">
                       一致する売上伝票がありません
                     </td>
                   </tr>
@@ -270,6 +309,17 @@ export default function SalesPage() {
                       </td>
                       <td className="py-3.5 px-4 text-right font-black text-stone-900 text-sm whitespace-nowrap">
                         {formatCurrency(sale.totalAmount ?? sale.total_amount ?? 0)}
+                      </td>
+                      <td className="py-3.5 px-3 text-center whitespace-nowrap">
+                        <button
+                          type="button"
+                          onClick={() => handleCancelSale(sale.id, sale.totalAmount ?? sale.total_amount ?? 0)}
+                          title="この売上伝票を取り消す（在庫・金庫残高を元に戻す）"
+                          className="px-2.5 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 hover:text-rose-700 border border-rose-200 transition-all text-xs font-bold flex items-center gap-1 mx-auto cursor-pointer shadow-xs active:scale-95"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          <span>取消</span>
+                        </button>
                       </td>
                     </tr>
                   ))
