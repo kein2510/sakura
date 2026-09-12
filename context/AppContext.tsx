@@ -214,8 +214,20 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
   });
 
-  // サイトを開いたときは常に未ログイン状態（ログイン画面を表示）
-  const [currentUser, setCurrentUser] = useState<StaffUser | null>(null);
+  // サイトを開いたときは常に未ログイン状態（同一タブ内での作業中リロードのみセッション復元）
+  const [currentUser, setCurrentUser] = useState<StaffUser | null>(() => {
+    if (typeof window !== "undefined") {
+      const saved = sessionStorage.getItem("fivem_sakura_session");
+      if (saved) {
+        try {
+          return JSON.parse(saved);
+        } catch {
+          // ignore
+        }
+      }
+    }
+    return null;
+  });
 
   // アイテム・在庫状態
   const [items, setItems] = useState<Item[]>(() => {
@@ -365,9 +377,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (typeof window !== "undefined") {
       if (currentUser) {
-        localStorage.setItem("fivem_sakura_session", JSON.stringify(currentUser));
+        sessionStorage.setItem("fivem_sakura_session", JSON.stringify(currentUser));
       } else {
-        localStorage.removeItem("fivem_sakura_session");
+        sessionStorage.removeItem("fivem_sakura_session");
       }
     }
   }, [currentUser]);
@@ -856,6 +868,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         title: "ログアウト",
         detail: `「${currentUser.displayName}」がログアウトしました`,
       });
+    }
+    if (typeof window !== "undefined") {
+      sessionStorage.removeItem("fivem_sakura_session");
+      localStorage.removeItem("fivem_sakura_session");
     }
     setCurrentUser(null);
   };

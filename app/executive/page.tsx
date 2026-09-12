@@ -614,6 +614,28 @@ export default function ExecutivePage() {
     return log.category === logFilter;
   });
 
+  // 幹部権限チェック（一般スタッフの場合はアクセス制限画面を表示）
+  if (currentUser?.role !== "executive") {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[70vh] p-6 text-center text-white">
+        <div className="w-16 h-16 rounded-3xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 mb-4 shadow-lg shadow-amber-950/30">
+          <Lock className="w-8 h-8" />
+        </div>
+        <h2 className="text-xl font-black mb-2">幹部専用ページです</h2>
+        <p className="text-xs text-stone-400 max-w-sm mb-6 leading-relaxed">
+          このページは店主・店長などの幹部権限を持つアカウントのみ閲覧・操作可能です。<br />
+          権限が必要な場合は店主（kein）までお問い合わせください。
+        </p>
+        <Link
+          href="/"
+          className="px-5 py-2.5 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-200 text-xs font-bold border border-stone-700 transition-all flex items-center gap-2"
+        >
+          <span>売上・作成トップ画面に戻る</span>
+        </Link>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 max-w-7xl mx-auto p-4 md:p-6 pb-16">
       {/* リアルタイム同期通知 */}

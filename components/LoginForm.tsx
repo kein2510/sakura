@@ -1,34 +1,32 @@
 "use client";
 
 import React, { useState } from "react";
-import { Lock, User, KeyRound, AlertCircle, Store, ArrowRight, ShieldCheck } from "lucide-react";
+import { Lock, User, KeyRound, AlertCircle, ArrowRight, Eye, EyeOff, Shield } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 
 export default function LoginForm() {
   const { login } = useApp();
   const [username, setUsername] = useState("");
   const [pass, setPass] = useState("");
+  const [showPass, setShowPass] = useState(false);
   const [error, setError] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
 
     if (!username.trim() || !pass.trim()) {
-      setError("名前とPASSを入力してください。");
+      setError("名前とパスワードを入力してください。");
       return;
     }
 
+    setIsLoading(true);
     const result = login(username, pass);
     if (!result.success) {
-      setError(result.message || "ログインに失敗しました。");
+      setError(result.message || "ログインに失敗しました。ユーザー名またはパスワードをご確認ください。");
+      setIsLoading(false);
     }
-  };
-
-  const handleQuickLogin = (u: string, p: string) => {
-    setUsername(u);
-    setPass(p);
-    login(u, p);
   };
 
   return (
@@ -40,14 +38,14 @@ export default function LoginForm() {
       </div>
 
       <div className="relative w-full max-w-md bg-stone-900 border border-stone-800 rounded-3xl shadow-2xl p-8 text-white">
-        {/* ロゴ */}
+        {/* ロゴ & 正式版タイトル */}
         <div className="text-center mb-6">
           <div className="w-24 h-24 rounded-full bg-stone-900 border-2 border-amber-400/40 p-2 flex items-center justify-center mx-auto mb-3 shadow-xl shadow-rose-950/50 overflow-hidden">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/logo.png" alt="和食さくら" className="w-full h-full object-contain" />
           </div>
           <h1 className="text-2xl font-black tracking-tight text-white">和食さくら</h1>
-          <p className="text-xs text-stone-400 mt-1">店舗管理・売上クラフトシステム</p>
+          <p className="text-xs text-stone-400 mt-1">店舗管理・売上クラフトシステム (正式運用版)</p>
         </div>
 
         {/* エラー表示 */}
@@ -58,68 +56,66 @@ export default function LoginForm() {
           </div>
         )}
 
-        {/* フォーム */}
+        {/* 認証フォーム */}
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="text-xs font-bold text-stone-300 block mb-1.5 flex items-center gap-1.5">
               <User className="w-3.5 h-3.5 text-stone-400" />
-              名前 (ユーザーID)
+              従業員名 (ユーザー名)
             </label>
             <input
               type="text"
-              placeholder="例: kein"
+              placeholder="ユーザー名を入力"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               className="w-full bg-stone-800/80 border border-stone-700 rounded-xl px-4 py-3 text-sm text-white placeholder-stone-500 focus:outline-none focus:border-rose-500 focus:ring-1 focus:ring-rose-500 transition-all font-medium"
               autoFocus
+              required
             />
           </div>
 
           <div>
             <label className="text-xs font-bold text-stone-300 block mb-1.5 flex items-center gap-1.5">
               <KeyRound className="w-3.5 h-3.5 text-stone-400" />
-              PASS (パスワード)
+              ログインPASS (パスワード)
             </label>
-            <input
-              type="password"
-              placeholder="例: 001"
-              value={pass}
-              onChange={(e) => setPass(e.target.value)}
-              className="w-full bg-stone-800/80 border border-stone-700 rounded-xl px-4 py-3 text-sm text-white placeholder-stone-500 focus:outline-none focus:border-rose-500 focus:ring-1 focus:ring-rose-500 transition-all font-medium tracking-widest"
-            />
+            <div className="relative">
+              <input
+                type={showPass ? "text" : "password"}
+                placeholder="パスワードを入力"
+                value={pass}
+                onChange={(e) => setPass(e.target.value)}
+                className="w-full bg-stone-800/80 border border-stone-700 rounded-xl pl-4 pr-11 py-3 text-sm text-white placeholder-stone-500 focus:outline-none focus:border-rose-500 focus:ring-1 focus:ring-rose-500 transition-all font-medium tracking-wider"
+                required
+              />
+              <button
+                type="button"
+                onClick={() => setShowPass(!showPass)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-200 transition-colors p-1"
+                tabIndex={-1}
+                title={showPass ? "パスワードを隠す" : "パスワードを表示する"}
+              >
+                {showPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
           </div>
 
           <button
             type="submit"
-            className="w-full py-3.5 rounded-xl bg-gradient-to-r from-rose-600 to-rose-500 hover:from-rose-500 hover:to-rose-600 font-bold text-sm text-white shadow-lg shadow-rose-900/30 transition-all duration-200 flex items-center justify-center gap-2 cursor-pointer mt-2"
+            disabled={isLoading}
+            className="w-full py-3.5 rounded-xl bg-gradient-to-r from-rose-600 to-rose-500 hover:from-rose-500 hover:to-rose-600 active:scale-98 disabled:opacity-50 disabled:cursor-not-allowed font-bold text-sm text-white shadow-lg shadow-rose-900/30 transition-all duration-200 flex items-center justify-center gap-2 cursor-pointer mt-4"
           >
-            <span>店舗システムに入る</span>
+            <span>{isLoading ? "認証中..." : "店舗システムにログイン"}</span>
             <ArrowRight className="w-4 h-4" />
           </button>
         </form>
 
-        {/* クイックログイン案内（テスト用） */}
-        <div className="mt-6 pt-5 border-t border-stone-800/80">
-          <p className="text-[11px] text-stone-400 text-center mb-2 font-medium">
-            クイックログイン (ワンタップ):
+        {/* セキュリティ表記 */}
+        <div className="mt-6 pt-4 border-t border-stone-800/60 text-center">
+          <p className="text-[10px] text-stone-500 flex items-center justify-center gap-1">
+            <Shield className="w-3 h-3 text-stone-600" />
+            <span>関係者専用システム ｜ 権限は幹部管理画面にて発行されます</span>
           </p>
-          <div className="flex gap-2 justify-center">
-            <button
-              type="button"
-              onClick={() => handleQuickLogin("kein", "001")}
-              className="px-3 py-1.5 rounded-lg bg-stone-800 hover:bg-stone-700 border border-stone-700 text-xs font-bold text-amber-400 transition-colors flex items-center gap-1"
-            >
-              <ShieldCheck className="w-3.5 h-3.5" />
-              管理者: kein (001)
-            </button>
-            <button
-              type="button"
-              onClick={() => handleQuickLogin("yamada", "123")}
-              className="px-3 py-1.5 rounded-lg bg-stone-800 hover:bg-stone-700 border border-stone-700 text-xs font-medium text-stone-300 transition-colors"
-            >
-              スタッフ: yamada (123)
-            </button>
-          </div>
         </div>
       </div>
     </div>

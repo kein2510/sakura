@@ -11,6 +11,8 @@ import {
   LogOut,
   ChevronRight,
   Sparkles,
+  Receipt,
+  Image as ImageIcon,
 } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import { cn } from "@/lib/utils";
@@ -26,7 +28,13 @@ export default function Sidebar() {
       name: "売上 ＆ クラフト作成",
       href: "/",
       icon: ShoppingBag,
-      desc: "商品の販売と在庫クラフト",
+      desc: "商品の販売と料理作成",
+    },
+    {
+      name: "売上管理・台帳",
+      href: "/sales",
+      icon: Receipt,
+      desc: "伝票一覧・売上分析・取消",
     },
     {
       name: "全体在庫一覧",
@@ -35,10 +43,16 @@ export default function Sidebar() {
       desc: "商品・素材の全在庫",
     },
     {
+      name: "商品ギャラリー",
+      href: "/products",
+      icon: ImageIcon,
+      desc: "料理・素材の画像管理",
+    },
+    {
       name: "幹部管理ページ",
       href: "/executive",
       icon: ShieldCheck,
-      desc: "従業員PASS/レシピ/商品設定",
+      desc: "従業員PASS/給与査定/金庫",
       isExecutiveOnly: true,
     },
   ];
