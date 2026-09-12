@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   ShieldCheck,
   Lock,
@@ -89,6 +89,7 @@ export default function ExecutivePage() {
     addItem,
     updateItem,
     deleteItem,
+    updateItemImage,
     actionLogs,
     vaultBalance,
     updateVaultBalance,
