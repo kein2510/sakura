@@ -11,11 +11,8 @@ import {
   Plus,
   Minus,
   Sparkles,
-  History,
-  User,
   Store,
   Radio,
-  Trash2,
   Undo2,
 } from "lucide-react";
 import { useApp } from "@/context/AppContext";
@@ -24,7 +21,7 @@ import { ShopId, SHOPS } from "@/types";
 import { supabase } from "@/lib/supabase";
 
 export default function MainPage() {
-  const { items, products, ingredients, sellProducts, craftProducts, sales, users, refreshData, cancelSale, rollbackCraftItems } = useApp();
+  const { items, products, ingredients, sellProducts, craftProducts, refreshData, rollbackCraftItems } = useApp();
 
   // 現在選択中の店舗 ("sakura" | "buon_viaggio")
   const [selectedShopId, setSelectedShopId] = useState<ShopId>("sakura");
@@ -80,10 +77,6 @@ export default function MainPage() {
       supabase.removeChannel(channel);
     };
   }, [refreshData]);
-
-  // 売上履歴のフィルター
-  const [selectedStaffFilter, setSelectedStaffFilter] = useState<string>("all");
-  const [selectedShopFilter, setSelectedShopFilter] = useState<string>("all");
 
   // 選択中店舗の料理商品のみを抽出 (未設定のものはデフォルトで sakura 扱い)
   const currentShopProducts = products.filter(
@@ -192,22 +185,6 @@ export default function MainPage() {
       if (result.success) {
         setNotification({ type: "success", message: result.message });
         setLastCraft(null);
-      } else {
-        setNotification({ type: "error", message: result.message });
-      }
-    }
-  };
-
-  // 売上伝票を取り消す（販売在庫復元 ＆ 金庫店舗入金分の減額）
-  const handleCancelSale = async (saleId: string, amount: number) => {
-    if (
-      window.confirm(
-        `この売上伝票を取り消しますか？\n伝票ID: ${saleId} (金額: ${formatCurrency(amount)})\n\n・販売した商品の在庫が元の個数に戻ります\n・金庫に入金された売上金（店舗手元残り70%）が自動で戻されます`
-      )
-    ) {
-      const result = await cancelSale(saleId);
-      if (result.success) {
-        setNotification({ type: "success", message: result.message });
       } else {
         setNotification({ type: "error", message: result.message });
       }
@@ -576,207 +553,7 @@ export default function MainPage() {
         </div>
       </div>
 
-      {/* ========================================================
-          📜 従業員別 売上伝票・販売履歴セクション
-      ======================================================== */}
-      <div className="bg-stone-900/90 rounded-3xl border border-stone-800 p-6 shadow-2xl text-white space-y-4">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-          <div>
-            <h2 className="text-base font-black text-white flex items-center gap-2">
-              <History className="w-5 h-5 text-rose-500" />
-              従業員別 売上伝票・販売履歴
-            </h2>
-            <p className="text-xs text-stone-400 mt-0.5">
-              誰がいつ・どの店舗で商品を販売したかのリアルタイム伝票履歴です（ボーナス査定の対象）
-            </p>
-          </div>
-
-          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
-            {/* 店舗フィルター */}
-            <div className="flex items-center gap-1 bg-stone-950 p-1 rounded-xl border border-stone-800">
-              <button
-                type="button"
-                onClick={() => setSelectedShopFilter("all")}
-                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
-                  selectedShopFilter === "all"
-                    ? "bg-stone-700 text-white shadow-xs"
-                    : "text-stone-400 hover:text-white"
-                }`}
-              >
-                全店舗
-              </button>
-              <button
-                type="button"
-                onClick={() => setSelectedShopFilter("sakura")}
-                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
-                  selectedShopFilter === "sakura"
-                    ? "bg-rose-600 text-white shadow-xs"
-                    : "text-stone-400 hover:text-white"
-                }`}
-              >
-                🌸 さくら
-              </button>
-              <button
-                type="button"
-                onClick={() => setSelectedShopFilter("buon_viaggio")}
-                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
-                  selectedShopFilter === "buon_viaggio"
-                    ? "bg-emerald-600 text-white shadow-xs"
-                    : "text-stone-400 hover:text-white"
-                }`}
-              >
-                🍷 Buon viaggio
-              </button>
-            </div>
-
-            {/* スタッフ絞り込みフィルター */}
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 bg-stone-950 p-1.5 rounded-2xl border border-stone-800 max-w-full">
-              <button
-                type="button"
-                onClick={() => setSelectedStaffFilter("all")}
-                className={`px-3 py-1 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
-                  selectedStaffFilter === "all"
-                    ? "bg-rose-600 text-white shadow-xs"
-                    : "text-stone-400 hover:text-white"
-                }`}
-              >
-                全員
-              </button>
-              {users.map((u) => {
-                const count = sales.filter(
-                  (s) => s.staffUserId === u.id || s.staffName === u.displayName || s.staff_name === u.displayName
-                ).length;
-                return (
-                  <button
-                    key={u.id}
-                    type="button"
-                    onClick={() => setSelectedStaffFilter(u.id)}
-                    className={`px-3 py-1 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1 ${
-                      selectedStaffFilter === u.id
-                        ? "bg-rose-600 text-white shadow-xs"
-                        : "text-stone-400 hover:text-white"
-                    }`}
-                  >
-                    <User className="w-3 h-3" />
-                    {u.displayName} ({count})
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-
-        {/* 伝票リスト */}
-        <div className="space-y-2.5 max-h-80 overflow-y-auto pr-1">
-          {(() => {
-            const filteredSales = sales.filter((s) => {
-              // 店舗フィルター
-              if (selectedShopFilter !== "all" && (s.shopId || "sakura") !== selectedShopFilter) {
-                return false;
-              }
-              // スタッフフィルター
-              if (selectedStaffFilter === "all") return true;
-              const targetUser = users.find((u) => u.id === selectedStaffFilter);
-              if (!targetUser) return true;
-              return (
-                s.staffUserId === targetUser.id ||
-                s.staffName === targetUser.displayName ||
-                s.staff_name === targetUser.displayName
-              );
-            });
-
-            if (filteredSales.length === 0) {
-              return (
-                <p className="text-xs text-stone-500 py-8 text-center bg-stone-950/40 rounded-2xl border border-stone-800/60">
-                  該当する売上伝票はありません
-                </p>
-              );
-            }
-
-            return filteredSales.map((sale) => {
-              const saleShop = sale.shopId === "buon_viaggio" ? "buon_viaggio" : "sakura";
-              const isBV = saleShop === "buon_viaggio";
-
-              return (
-                <div
-                  key={sale.id}
-                  className="p-3.5 rounded-2xl bg-stone-950/70 border border-stone-800/80 hover:border-stone-700 flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-all"
-                >
-                  <div>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-xs font-mono font-bold text-stone-400">
-                        #{sale.id}
-                      </span>
-                      {/* 店舗バッジ */}
-                      <span
-                        className={`text-[10px] font-black px-2 py-0.5 rounded-md border ${
-                          isBV
-                            ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/30"
-                            : "bg-rose-500/20 text-rose-300 border border-rose-500/30"
-                        }`}
-                      >
-                        {isBV ? "🍷 Buon viaggio" : "🌸 和食さくら"}
-                      </span>
-                      <span className="text-[11px] font-black px-2 py-0.5 rounded-md bg-stone-800 text-stone-300 border border-stone-700 flex items-center gap-1">
-                        <User className="w-3 h-3" />
-                        担当: {sale.staffName || sale.staff_name || "店員"}
-                      </span>
-                      <span className="text-[11px] text-stone-500">
-                        {new Date(sale.created_at).toLocaleString("ja-JP", {
-                          month: "numeric",
-                          day: "numeric",
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
-                      </span>
-                    </div>
-
-                    {/* 販売商品リスト */}
-                    <div className="flex flex-wrap gap-1.5 mt-2">
-                      {sale.items.map((it, idx) => (
-                        <span
-                          key={idx}
-                          className="px-2 py-0.5 rounded-lg bg-stone-900 border border-stone-700/80 text-[11px] font-semibold text-stone-300"
-                        >
-                          {it.itemName || it.item_name}{" "}
-                          <strong className={isBV ? "text-emerald-400 font-bold" : "text-rose-400 font-bold"}>
-                            ×{it.quantity}
-                          </strong>
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* 合計売上金額 ＆ 取消ボタン */}
-                  <div className="flex items-center gap-3">
-                    <div className="text-right sm:text-right">
-                      <span className="text-[10px] text-stone-400 block">売上金額</span>
-                      <span
-                        className={`text-lg font-black ${
-                          isBV ? "text-emerald-400" : "text-rose-400"
-                        }`}
-                      >
-                        {formatCurrency(sale.totalAmount ?? sale.total_amount ?? 0)}
-                      </span>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => handleCancelSale(sale.id, sale.totalAmount ?? sale.total_amount ?? 0)}
-                      title="この売上伝票を取り消す（在庫・金庫残高を元に戻す）"
-                      className="px-2.5 py-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/25 active:scale-95 text-rose-400 hover:text-rose-300 border border-rose-500/30 transition-all flex items-center gap-1 text-xs font-bold shrink-0 cursor-pointer shadow-sm"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                      <span className="hidden sm:inline">取消</span>
-                    </button>
-                  </div>
-                </div>
-              );
-            });
-          })()}
-        </div>
       </div>
     </div>
-  </div>
   );
 }

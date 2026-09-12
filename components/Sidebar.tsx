@@ -34,19 +34,13 @@ export default function Sidebar() {
       name: "売上管理・台帳",
       href: "/sales",
       icon: Receipt,
-      desc: "伝票一覧・売上分析・取消",
+      desc: "伝票一覧・売上ランキング・取消",
     },
     {
       name: "全体在庫一覧",
       href: "/inventory",
       icon: Boxes,
       desc: "商品・素材の全在庫",
-    },
-    {
-      name: "商品ギャラリー",
-      href: "/products",
-      icon: ImageIcon,
-      desc: "料理・素材の画像管理",
     },
     {
       name: "幹部管理ページ",
