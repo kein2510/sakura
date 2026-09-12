@@ -522,7 +522,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // Supabase 初期データ取得 & Realtime 購読
   // ============================================================================
   useEffect(() => {
-    if (!isSupabaseConfigured || !supabase) {
+    const client = supabase;
+    if (!isSupabaseConfigured || !client) {
       setSyncStatus("offline");
       return;
     }
@@ -534,7 +535,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const fetchCloudData = async () => {
       try {
         // (A) アイテム取得
-        const { data: cloudItems, error: itemsErr } = await supabase
+        const { data: cloudItems, error: itemsErr } = await client
           .from("sakura_items")
           .select("*");
 
@@ -567,7 +568,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         }
 
         // (B) 売上伝票取得
-        const { data: cloudSales, error: salesErr } = await supabase
+        const { data: cloudSales, error: salesErr } = await client
           .from("sakura_sales")
           .select("*")
           .order("created_at", { ascending: false });
@@ -596,7 +597,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         }
 
         // (C) 操作ログ取得 (最新500件)
-        const { data: cloudLogs, error: logsErr } = await supabase
+        const { data: cloudLogs, error: logsErr } = await client
           .from("sakura_action_logs")
           .select("*")
           .order("created_at", { ascending: false })
@@ -622,7 +623,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         }
 
         // (D) 共通システム状態 (金庫残高, ボーナス, 役職, 従業員)
-        const { data: stateData, error: stateErr } = await supabase
+        const { data: stateData, error: stateErr } = await client
           .from("sakura_system_state")
           .select("*");
 
@@ -652,7 +653,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     fetchCloudData();
 
     // 2. Realtime 購読
-    const channel = supabase
+    const channel = client
       .channel("sakura_realtime_all")
       // アイテム変更
       .on(
@@ -777,7 +778,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     return () => {
       isMounted = false;
-      supabase.removeChannel(channel);
+      client.removeChannel(channel);
     };
   }, []);
 
