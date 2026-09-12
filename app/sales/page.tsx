@@ -3,7 +3,6 @@
 import React, { useState, useEffect, useMemo } from "react";
 import {
   Receipt,
-  PlusCircle,
   Calendar,
   Filter,
   Search,
@@ -26,7 +25,6 @@ import {
 } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import { formatCurrency, formatDate } from "@/lib/utils";
-import SalesModal from "@/components/SalesModal";
 import { ShopId, SHOPS } from "@/types";
 import { supabase } from "@/lib/supabase";
 import { getSunday, getSaturday } from "@/lib/dateUtils";
@@ -35,7 +33,6 @@ type PeriodType = "today" | "week" | "month" | "all" | "custom";
 
 export default function SalesPage() {
   const { sales, items, users, refreshData, cancelSale } = useApp();
-  const [isModalOpen, setIsModalOpen] = useState(false);
 
   // 期間フィルター ("today" | "week" | "month" | "all" | "custom")
   const [periodType, setPeriodType] = useState<PeriodType>("today");
@@ -370,15 +367,6 @@ export default function SalesPage() {
             </p>
           </div>
         </div>
-
-        <button
-          type="button"
-          onClick={() => setIsModalOpen(true)}
-          className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-500 text-white shadow-md shadow-rose-950/40 transition-all active:scale-95 cursor-pointer self-start sm:self-auto"
-        >
-          <PlusCircle className="w-4 h-4" />
-          <span>新規売上入力</span>
-        </button>
       </div>
 
       {/* リアルタイム通知バナー */}
@@ -993,9 +981,6 @@ export default function SalesPage() {
           )}
         </div>
       </div>
-
-      {/* 新規売上登録モーダル */}
-      <SalesModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} />
     </div>
   );
 }
