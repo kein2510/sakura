@@ -1,0 +1,78 @@
+"use client";
+
+import React, { useState, useEffect } from "react";
+import { Clock, LogOut, User, ShieldCheck } from "lucide-react";
+import { useApp } from "@/context/AppContext";
+
+export default function Header() {
+  const { currentUser, logout } = useApp();
+  const [timeString, setTimeString] = useState<string>("");
+
+  useEffect(() => {
+    const update = () => {
+      const now = new Date();
+      setTimeString(
+        now.toLocaleTimeString("ja-JP", {
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+        })
+      );
+    };
+    update();
+    const timer = setInterval(update, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  return (
+    <header className="h-14 bg-stone-900 border-b border-stone-800 px-6 flex items-center justify-between shadow-sm shrink-0">
+      {/* 左側: 店舗ステータス & ロゴ */}
+      <div className="flex items-center gap-3 text-xs">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 rounded-lg bg-stone-800 border border-amber-400/40 p-0.5 flex items-center justify-center overflow-hidden">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/logo.png" alt="和食さくら" className="w-full h-full object-contain" />
+          </div>
+          <span className="font-extrabold text-stone-200 hidden sm:inline">和食さくら</span>
+        </div>
+
+        <div className="flex items-center gap-2 font-medium bg-stone-800/80 px-3 py-1 rounded-lg border border-stone-700/60 text-stone-300">
+          <Clock className="w-3.5 h-3.5 text-stone-400" />
+          <span suppressHydrationWarning>{timeString || "22:00:00"}</span>
+        </div>
+
+        <div className="flex items-center gap-1.5 text-[11px] font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-lg border border-emerald-500/20">
+          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+          <span>店舗稼働中</span>
+        </div>
+      </div>
+
+      {/* 右側: ログイン中の担当者 & ログアウト */}
+      <div className="flex items-center gap-3 text-xs">
+        <div className="flex items-center gap-2 bg-stone-800 px-3 py-1.5 rounded-xl border border-stone-700">
+          <User className="w-3.5 h-3.5 text-stone-400" />
+          <span className="text-stone-400">操作担当:</span>
+          <strong className="text-white font-bold">{currentUser?.displayName}</strong>
+          <span
+            className={`text-[9px] px-1.5 py-0.2 rounded font-bold ${
+              currentUser?.role === "executive"
+                ? "bg-amber-400/20 text-amber-300 border border-amber-400/30"
+                : "bg-emerald-400/20 text-emerald-300 border border-emerald-400/30"
+            }`}
+          >
+            {currentUser?.role === "executive" ? "幹部" : "スタッフ"}
+          </span>
+        </div>
+
+        <button
+          type="button"
+          onClick={logout}
+          className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-stone-800 hover:bg-rose-950/40 text-stone-300 hover:text-rose-400 border border-stone-700 transition-colors font-medium text-xs cursor-pointer"
+        >
+          <LogOut className="w-3.5 h-3.5" />
+          ログアウト
+        </button>
+      </div>
+    </header>
+  );
+}
