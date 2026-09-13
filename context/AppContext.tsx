@@ -105,7 +105,7 @@ interface AppContextType {
   getWeeklySummary: (weekKey?: string) => WeeklySummary;
   saveWeeklyBonus: (
     weekKey: string,
-    staffBonuses: { [userId: string]: { amount: number; note?: string; isPaid?: boolean } }
+    staffBonuses: { [userId: string]: { amount: number; note?: string; isPaid?: boolean; paidAt?: string } }
   ) => void;
   finalizeWeeklyBonus: (weekKey: string) => void;
   unfinalizeWeeklyBonus: (weekKey: string) => void;
@@ -1257,7 +1257,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         }
       });
 
+      // 今週分の未払い額（isPaidがtrueなら今週分は支払い済みなので0円、未払いならbonusAmount）
+      const thisWeekUnpaidAmount = isPaid ? 0 : bonusAmount;
+
+      // 今週決定分 + 過去確定未払いの総額 (決定時の総枠)
       const totalDueAmount = bonusAmount + previousUnpaidBonusTotal;
+
+      // 現在スタッフへ手渡すべき「残り金額」(¥) ★未払いを支払済みにするとリアルタイムに減る！
+      const remainingDueAmount = thisWeekUnpaidAmount + previousUnpaidBonusTotal;
 
       return {
         userId: u.id,
@@ -1285,6 +1292,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         previousUnpaidBonusTotal,
         previousUnpaidWeeks,
         totalDueAmount,
+        thisWeekUnpaidAmount,
+        remainingDueAmount,
         weekSales: userSales,
       };
     });
@@ -1304,6 +1313,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const totalBonusPayout = staffStats.reduce((sum, s) => sum + s.bonusAmount, 0);
     const totalUnpaidCarryover = staffStats.reduce((sum, s) => sum + s.previousUnpaidBonusTotal, 0);
     const totalDuePayout = staffStats.reduce((sum, s) => sum + s.totalDueAmount, 0);
+    const totalRemainingDuePayout = staffStats.reduce((sum, s) => sum + s.remainingDueAmount, 0);
 
     return {
       weekKey,
@@ -1335,6 +1345,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       totalBonusPayout,
       totalUnpaidCarryover,
       totalDuePayout,
+      totalRemainingDuePayout,
       staffStats,
     };
   };
@@ -1342,18 +1353,22 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // 週ボーナスの保存
   const saveWeeklyBonus = (
     weekKey: string,
-    staffBonuses: { [userId: string]: { amount: number; note?: string; isPaid?: boolean } }
+    staffBonuses: { [userId: string]: { amount: number; note?: string; isPaid?: boolean; paidAt?: string } }
   ) => {
     setWeeklyBonuses((prev) => {
       const existing = prev[weekKey] || { isFinalized: false, bonuses: {} };
+      const mergedBonuses = { ...existing.bonuses };
+      Object.keys(staffBonuses).forEach((uId) => {
+        mergedBonuses[uId] = {
+          ...(mergedBonuses[uId] || {}),
+          ...staffBonuses[uId],
+        };
+      });
       const updated = {
         ...prev,
         [weekKey]: {
           ...existing,
-          bonuses: {
-            ...existing.bonuses,
-            ...staffBonuses,
-          },
+          bonuses: mergedBonuses,
         },
       };
       syncStateToCloud("weekly_bonuses", updated);

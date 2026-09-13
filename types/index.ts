@@ -209,7 +209,9 @@ export interface StaffWeeklyStat {
   // 過去の未払い繰越情報
   previousUnpaidBonusTotal: number; // 過去の確定済みで未払いのボーナス累計 (¥)
   previousUnpaidWeeks: { weekKey: string; weekLabel: string; amount: number }[]; // 未払い週の内訳
-  totalDueAmount: number;      // 今週の決定額 + 過去未払い繰越の合計支払い予定額 (¥)
+  totalDueAmount: number;      // 今週の決定額 + 過去未払い繰越の総額 (¥)
+  thisWeekUnpaidAmount: number;// 今週分の未払い額 (isPaidなら0、未払いならbonusAmount)
+  remainingDueAmount: number;  // 現在スタッフに手渡すべき「残り金額」(¥) ★未払いを支払済にすると減る！
   weekSales: Sale[];           // その週の売上伝票リスト
 }
 
@@ -230,9 +232,10 @@ export interface WeeklySummary {
   totalIncentive30: number;    // スタッフ手渡しインセンティブ総額 (3割)
   totalStoreRemaining70: number;// 店舗純残額 (7割)
   totalCraftItems: number;     // 店舗総クラフト個数
-  totalBonusPayout: number;    // 今週の支給ボーナス総額
+  totalBonusPayout: number;    // 今週の決定ボーナス総額
   totalUnpaidCarryover: number;// 全スタッフの過去未払い繰越総額
-  totalDuePayout: number;      // 今週決定分 + 過去未払い合算の総支払予定額
+  totalDuePayout: number;      // 今週決定分 + 過去未払い合算の総額
+  totalRemainingDuePayout: number; // 全スタッフの未払い残り総額 (支払済にすると減る手渡し必要総額)
   staffStats: StaffWeeklyStat[];// スタッフ別実績
 }
 

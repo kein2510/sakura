@@ -40,6 +40,7 @@ import {
   Store,
   Landmark,
   Radio,
+  Clock,
 } from "lucide-react";
 import Link from "next/link";
 import { useApp } from "@/context/AppContext";
@@ -1687,29 +1688,32 @@ export default function ExecutivePage() {
                   </span>
                 </div>
 
-                {/* ③ スタッフ総支払予定額 (過去未払い合算) */}
-                <div className="p-3.5 rounded-xl bg-stone-900 border border-amber-500/30 shadow-sm">
+                {/* ③ 手渡し未払い残高 (残り支払うべき総額) */}
+                <div className="p-3.5 rounded-xl bg-stone-900 border border-amber-500/40 shadow-sm">
                   <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-bold text-amber-300">総支払予定額 (未払い合算):</span>
-                    {currentWeeklySummary.totalUnpaidCarryover > 0 && (
-                      <span className="text-[9px] font-bold text-amber-300 bg-amber-950/80 border border-amber-500/40 px-1.5 py-0.2 rounded">
-                        繰越あり
+                    <span className="text-[11px] font-bold text-amber-300">手渡し未払い残高 (残り支払額):</span>
+                    {currentWeeklySummary.totalRemainingDuePayout > 0 ? (
+                      <span className="text-[9px] font-bold text-amber-300 bg-amber-950/80 border border-amber-500/40 px-1.5 py-0.2 rounded animate-pulse">
+                        要手渡し
+                      </span>
+                    ) : (
+                      <span className="text-[9px] font-bold text-emerald-300 bg-emerald-950/80 border border-emerald-500/40 px-1.5 py-0.2 rounded">
+                        全額支給済 ✨
                       </span>
                     )}
                   </div>
-                  <span className="text-xl font-black text-white block mt-1">
-                    {formatCurrency(currentWeeklySummary.totalDuePayout)}
+                  <span className={`text-xl font-black block mt-1 ${currentWeeklySummary.totalRemainingDuePayout > 0 ? "text-amber-400" : "text-emerald-400"}`}>
+                    {formatCurrency(currentWeeklySummary.totalRemainingDuePayout)}
                   </span>
                   <span className="text-[10px] text-stone-400 block mt-0.5">
-                    {currentWeeklySummary.totalUnpaidCarryover > 0
-                      ? `過去未払い: +${formatCurrency(currentWeeklySummary.totalUnpaidCarryover)} 含む`
-                      : "今週分のみ (過去未払いなし)"}
+                    決定総枠: {formatCurrency(currentWeeklySummary.totalDuePayout)}
+                    {currentWeeklySummary.totalUnpaidCarryover > 0 && ` (過去未払繰越 +${formatCurrency(currentWeeklySummary.totalUnpaidCarryover)} 含む)`}
                   </span>
                 </div>
 
-                {/* ④ 全ボーナス支払後の予想金庫残高 */}
+                {/* ④ 全残額支払後の予想金庫残高 */}
                 {(() => {
-                  const projectedBalance = vaultBalance - currentWeeklySummary.totalDuePayout;
+                  const projectedBalance = vaultBalance - currentWeeklySummary.totalRemainingDuePayout;
                   const isSafe = projectedBalance >= 0;
                   return (
                     <div className={`p-3.5 rounded-xl border shadow-sm ${
@@ -1719,7 +1723,7 @@ export default function ExecutivePage() {
                     }`}>
                       <div className="flex items-center justify-between">
                         <span className={`text-[11px] font-bold ${isSafe ? "text-emerald-300" : "text-rose-300"}`}>
-                          📉 支払後 予想金庫残高:
+                          📉 残額支払後 予想金庫残高:
                         </span>
                         <span className={`text-[9px] font-black px-1.5 py-0.2 rounded ${
                           isSafe ? "bg-emerald-900/60 text-emerald-300" : "bg-rose-900/60 text-rose-300"
@@ -1957,6 +1961,19 @@ export default function ExecutivePage() {
                               {stat.role === "executive" ? "幹部" : "スタッフ"}
                             </span>
                             <span className="text-xs text-stone-400 font-mono">@{stat.username}</span>
+
+                            {/* 支払いステータス特大バッジ（パッと見で支払済か未払いか分かる！） */}
+                            {stat.remainingDueAmount === 0 ? (
+                              <span className="text-xs font-black px-2.5 py-0.5 rounded-full bg-emerald-950/90 border border-emerald-500/70 text-emerald-300 flex items-center gap-1 shadow-xs">
+                                <CheckCheck className="w-3.5 h-3.5 text-emerald-400" />
+                                ✨ 全額支給完了
+                              </span>
+                            ) : (
+                              <span className="text-xs font-black px-2.5 py-0.5 rounded-full bg-amber-950/90 border border-amber-500/70 text-amber-300 flex items-center gap-1 shadow-xs animate-pulse">
+                                <Clock className="w-3.5 h-3.5 text-amber-400" />
+                                ⏳ 未払いあり (残: {formatCurrency(stat.remainingDueAmount)})
+                              </span>
+                            )}
                           </div>
                           <p className="text-[11px] text-stone-400 mt-0.5">
                             対象期間: {currentWeeklySummary.weekLabel}
@@ -1964,51 +1981,88 @@ export default function ExecutivePage() {
                         </div>
                       </div>
 
-                    {/* 右側: 支給決定額 & 支払状況トグル */}
-                    <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
-                      {/* 支給予定総額（今週分 + 過去未払い合算） */}
-                      <div className="bg-stone-950 border border-amber-500/40 px-4 py-2.5 rounded-2xl shadow-sm">
-                        <div className="flex items-center gap-2">
-                          <div>
-                            <span className="text-[10px] font-bold text-amber-400 block">
-                              スタッフへ手渡す総額 (総支払予定):
-                            </span>
-                            <span className="text-2xl font-black text-white">
-                              {formatCurrency(stat.totalDueAmount)}
-                            </span>
-                            {hasPastUnpaid && (
-                              <div className="text-[10px] text-amber-300 font-bold">
-                                (今週: {formatCurrency(stat.bonusAmount)} ＋ 過去未払: {formatCurrency(stat.previousUnpaidBonusTotal)})
-                              </div>
-                            )}
-                          </div>
-                          <Coins className="w-6 h-6 text-amber-400 shrink-0 ml-1" />
+                    {/* 右側: 【残りの金額】と【今週の金額】を明確に表示 & 支払状況切り替え */}
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                      {/* ① 今週の決定金額 & 今週分支払いボタン */}
+                      <div className="bg-stone-950 border border-stone-800 p-3 rounded-2xl flex flex-col justify-between min-w-[170px]">
+                        <div className="flex items-center justify-between text-[11px] mb-1">
+                          <span className="font-bold text-stone-400">💴 今週の決定額:</span>
+                          <span className={`text-[10px] font-black px-1.5 py-0.2 rounded ${
+                            stat.isPaid ? "bg-emerald-950 text-emerald-400 border border-emerald-600/40" : "bg-amber-950 text-amber-300 border border-amber-600/40"
+                          }`}>
+                            {stat.isPaid ? "今週分済" : "今週未払"}
+                          </span>
                         </div>
+                        <div className="text-xl font-black text-white mb-2">
+                          {formatCurrency(stat.bonusAmount)}
+                        </div>
+
+                        {/* 今週分の支払切替トグルボタン */}
+                        <button
+                          type="button"
+                          onClick={() => toggleBonusPaid(selectedWeekKey, stat.userId, !stat.isPaid)}
+                          className={`w-full px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 shadow-sm cursor-pointer ${
+                            stat.isPaid
+                              ? "bg-emerald-950/80 border border-emerald-500/60 text-emerald-300 hover:bg-emerald-900/80"
+                              : "bg-amber-500 hover:bg-amber-400 text-stone-950 font-extrabold hover:shadow-md hover:scale-[1.01]"
+                          }`}
+                          title={stat.isPaid ? "クリックすると今週分を未払いに戻します" : "クリックすると今週分を支払済みにします（残り金額が即座に減ります）"}
+                        >
+                          {stat.isPaid ? (
+                            <>
+                              <CheckCheck className="w-4 h-4 text-emerald-400" />
+                              <span>今週分: 支払済 ✅ (取消)</span>
+                            </>
+                          ) : (
+                            <>
+                              <Clock className="w-4 h-4" />
+                              <span>今週分を【支払済】にする</span>
+                            </>
+                          )}
+                        </button>
                       </div>
 
-                      {/* 支払ステータス トグルボタン */}
-                      <button
-                        type="button"
-                        onClick={() => toggleBonusPaid(selectedWeekKey, stat.userId, !stat.isPaid)}
-                        className={`px-3.5 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-1.5 shadow-md cursor-pointer ${
-                          stat.isPaid
-                            ? "bg-emerald-950/80 border border-emerald-500/60 text-emerald-300 hover:bg-emerald-900/80"
-                            : "bg-amber-950/80 border border-amber-500/60 text-amber-300 hover:bg-amber-900/80"
-                        }`}
-                        title="クリックで支払済/未払いを切り替え"
-                      >
-                        {stat.isPaid ? (
-                          <>
-                            <CheckCheck className="w-4 h-4 text-emerald-400" />
-                            <span>今週分: 支払済 ✅</span>
-                          </>
-                        ) : (
-                          <>
-                            <FileText className="w-4 h-4 text-amber-400" />
-                            <span>今週分: 未払い ⏳</span>
-                          </>
-                        )}
-                      </button>
+                      {/* ② スタッフへ手渡す【残り金額】（未払いを支払い済みにすると即座に減る！） */}
+                      <div className={`p-3 rounded-2xl border shadow-sm flex flex-col justify-between min-w-[200px] ${
+                        stat.remainingDueAmount === 0
+                          ? "bg-emerald-950/20 border-emerald-500/50"
+                          : "bg-stone-950 border-amber-500/60 ring-1 ring-amber-500/30"
+                      }`}>
+                        <div className="flex items-center justify-between text-[11px] mb-1">
+                          <span className={`font-black flex items-center gap-1 ${
+                            stat.remainingDueAmount === 0 ? "text-emerald-400" : "text-amber-400"
+                          }`}>
+                            <Coins className="w-3.5 h-3.5" />
+                            手渡す【残り金額】:
+                          </span>
+                          <span className={`text-[9px] font-black px-1.5 py-0.2 rounded ${
+                            stat.remainingDueAmount === 0
+                              ? "bg-emerald-900/60 text-emerald-300"
+                              : "bg-amber-900/80 text-amber-200 animate-pulse"
+                          }`}>
+                            {stat.remainingDueAmount === 0 ? "精算完了" : "要手渡し"}
+                          </span>
+                        </div>
+
+                        {/* 残り金額の特大表示 */}
+                        <div className={`text-2xl font-black ${
+                          stat.remainingDueAmount === 0 ? "text-emerald-400" : "text-amber-400"
+                        }`}>
+                          {stat.remainingDueAmount === 0 ? "¥0 (支給完了 ✨)" : formatCurrency(stat.remainingDueAmount)}
+                        </div>
+
+                        {/* 内訳情報 */}
+                        <div className="text-[10px] mt-1 text-stone-400">
+                          {stat.remainingDueAmount === 0 ? (
+                            <span className="text-emerald-400/90 font-bold">手渡し残額はありません</span>
+                          ) : (
+                            <span>
+                              内訳: 今週未払 {formatCurrency(stat.thisWeekUnpaidAmount)}
+                              {hasPastUnpaid && ` ＋ 過去未払 ${formatCurrency(stat.previousUnpaidBonusTotal)}`}
+                            </span>
+                          )}
+                        </div>
+                      </div>
                     </div>
                   </div>
 
@@ -2018,9 +2072,14 @@ export default function ExecutivePage() {
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                         <div className="flex items-center gap-2">
                           <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
-                          <span className="text-xs font-bold text-amber-300">
-                            過去の確定済み週に未払いが【{stat.previousUnpaidWeeks.length}週分】あります (合算額: +{formatCurrency(stat.previousUnpaidBonusTotal)})
-                          </span>
+                          <div>
+                            <span className="text-xs font-bold text-amber-300 block">
+                              過去の確定済み週に未払いが【{stat.previousUnpaidWeeks.length}週分】あります (合算額: +{formatCurrency(stat.previousUnpaidBonusTotal)})
+                            </span>
+                            <span className="text-[10px] text-amber-400/80">
+                              ※精算すると「スタッフへ手渡す残り金額」から即座に差し引かれます
+                            </span>
+                          </div>
                         </div>
 
                         <button
@@ -2030,15 +2089,16 @@ export default function ExecutivePage() {
                               confirm(
                                 `「${stat.displayName}」の過去の未払いボーナス（計 ${formatCurrency(
                                   stat.previousUnpaidBonusTotal
-                                )}）を一括で【支払済】に精算しますか？`
+                                )}）を一括で【支払済】に精算しますか？\n※スタッフへ手渡す残り金額から即座に差し引かれます。`
                               )
                             ) {
                               markAllPastBonusesAsPaid(stat.userId);
                             }
                           }}
-                          className="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-xs transition-colors self-start sm:self-auto cursor-pointer"
+                          className="px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-xs transition-colors self-start sm:self-auto cursor-pointer flex items-center gap-1.5"
                         >
-                          過去の未払いを一括で支払済みにする
+                          <CheckCheck className="w-4 h-4" />
+                          <span>過去の未払いを一括で支払済みにする</span>
                         </button>
                       </div>
 
