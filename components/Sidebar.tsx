@@ -19,16 +19,16 @@ import { cn } from "@/lib/utils";
 
 export default function Sidebar() {
   const pathname = usePathname();
-  const { currentUser, logout } = useApp();
+  const { currentUser, logout, storeSettings } = useApp();
 
   const isExecutive = currentUser?.role === "executive";
 
   const navItems = [
     {
-      name: "売上 ＆ クラフト作成",
+      name: storeSettings.enableCrafting ? "売上 ＆ クラフト作成" : "商品販売 (売上登録)",
       href: "/",
       icon: ShoppingBag,
-      desc: "商品の販売と料理作成",
+      desc: storeSettings.enableCrafting ? "商品の販売と料理作成" : "商品の販売レジ・売上登録",
     },
     {
       name: "売上管理・台帳",
@@ -36,12 +36,16 @@ export default function Sidebar() {
       icon: Receipt,
       desc: "伝票一覧・売上ランキング・取消",
     },
-    {
-      name: "全体在庫一覧",
-      href: "/inventory",
-      icon: Boxes,
-      desc: "商品・素材の全在庫",
-    },
+    ...(storeSettings.enableInventory || isExecutive
+      ? [
+          {
+            name: storeSettings.enableInventory ? "全体在庫一覧" : "全体在庫 (機能停止中)",
+            href: "/inventory",
+            icon: Boxes,
+            desc: storeSettings.enableInventory ? "商品・素材の全在庫" : "幹部確認のみ（設定無効中）",
+          },
+        ]
+      : []),
     {
       name: "幹部管理ページ",
       href: "/executive",

@@ -21,7 +21,7 @@ import { ShopId, SHOPS } from "@/types";
 import { supabase } from "@/lib/supabase";
 
 export default function MainPage() {
-  const { items, products, ingredients, sellProducts, craftProducts, refreshData, rollbackCraftItems } = useApp();
+  const { items, products, ingredients, sellProducts, craftProducts, refreshData, rollbackCraftItems, storeSettings } = useApp();
 
   // 現在選択中の店舗 ("sakura" | "buon_viaggio")
   const [selectedShopId, setSelectedShopId] = useState<ShopId>("sakura");
@@ -313,16 +313,18 @@ export default function MainPage() {
                 <span>売る (在庫減算)</span>
               </button>
 
-              {/* 作成ボタン (在庫を作った時のボタン) */}
-              <button
-                type="button"
-                onClick={handleCraft}
-                disabled={totalItemsCount === 0}
-                className="flex-1 md:flex-initial px-6 py-3.5 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 disabled:opacity-40 disabled:cursor-not-allowed font-extrabold text-sm text-white shadow-lg shadow-emerald-950/50 flex items-center justify-center gap-2 transition-all transform active:scale-95 cursor-pointer"
-              >
-                <Hammer className="w-5 h-5" />
-                <span>作成 (在庫増 ＆ 素材消費)</span>
-              </button>
+              {/* 作成ボタン (在庫を作った時のボタン - 機能有効時のみ表示) */}
+              {storeSettings.enableCrafting && (
+                <button
+                  type="button"
+                  onClick={handleCraft}
+                  disabled={totalItemsCount === 0}
+                  className="flex-1 md:flex-initial px-6 py-3.5 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 disabled:opacity-40 disabled:cursor-not-allowed font-extrabold text-sm text-white shadow-lg shadow-emerald-950/50 flex items-center justify-center gap-2 transition-all transform active:scale-95 cursor-pointer"
+                >
+                  <Hammer className="w-5 h-5" />
+                  <span>作成 (在庫増 ＆ 素材消費)</span>
+                </button>
+              )}
             </div>
           </div>
 

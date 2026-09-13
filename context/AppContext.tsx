@@ -15,6 +15,7 @@ import {
   StaffWeeklyStat,
   ShopId,
   SHOPS,
+  StoreSettings,
 } from "@/types";
 import {
   mockStaffUsers,
@@ -91,8 +92,13 @@ interface AppContextType {
   updateUserPass: (userId: string, newPass: string) => void;
   updateUserRole: (userId: string, role: Role) => void;
   updateUserBonus: (userId: string, bonusAmount: number, note?: string) => void;
+  updateUsersOrder: (orderedUsers: StaffUser[]) => void;
   deleteUser: (userId: string) => void;
   getStaffPerformances: () => StaffPerformance[];
+
+  // 店舗・機能利用設定 (クラフト・在庫管理のする/しない)
+  storeSettings: StoreSettings;
+  updateStoreSettings: (updates: Partial<StoreSettings>) => void;
 
   // 役職・カスタムロール管理
   roles: CustomRole[];
@@ -105,7 +111,7 @@ interface AppContextType {
   getWeeklySummary: (weekKey?: string) => WeeklySummary;
   saveWeeklyBonus: (
     weekKey: string,
-    staffBonuses: { [userId: string]: { amount: number; note?: string; isPaid?: boolean; paidAt?: string } }
+    staffBonuses: { [userId: string]: { amount: number; note?: string; isPaid?: boolean; paidAt?: string; ingredientCount?: number } }
   ) => void;
   finalizeWeeklyBonus: (weekKey: string) => void;
   unfinalizeWeeklyBonus: (weekKey: string) => void;
@@ -304,7 +310,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       isFinalized: boolean;
       finalizedAt?: string;
       finalizedBy?: string;
-      bonuses: { [userId: string]: { amount: number; note?: string; isPaid?: boolean; paidAt?: string } };
+      bonuses: { [userId: string]: { amount: number; note?: string; isPaid?: boolean; paidAt?: string; ingredientCount?: number } };
     };
   }>(() => {
     if (typeof window !== "undefined") {
@@ -346,6 +352,36 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
     return 3000000;
   });
+
+  // 店舗機能利用設定 (クラフト・在庫管理のする/しない、各種レート)
+  const defaultStoreSettings: StoreSettings = {
+    enableCrafting: true,
+    enableInventory: true,
+    ingredientRewardRate: 50,
+    craftRewardRate: 50,
+    storeRemainingBonusRate: 10,
+  };
+
+  const [storeSettings, setStoreSettings] = useState<StoreSettings>(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("fivem_sakura_store_settings");
+      if (saved) {
+        try {
+          return { ...defaultStoreSettings, ...JSON.parse(saved) };
+        } catch {
+          // ignore
+        }
+      }
+    }
+    return defaultStoreSettings;
+  });
+
+  // ローカル永続化 (オフラインバックアップ用)
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      localStorage.setItem("fivem_sakura_store_settings", JSON.stringify(storeSettings));
+    }
+  }, [storeSettings]);
 
   // ローカル永続化 (オフラインバックアップ用)
   useEffect(() => {
@@ -660,6 +696,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             setRoles(mappedRoles);
           } else if (row.key === "users" && Array.isArray(row.value)) {
             setUsers(row.value);
+          } else if (row.key === "store_settings" && row.value) {
+            setStoreSettings((prev) => ({ ...prev, ...row.value }));
           }
         });
       }
@@ -831,6 +869,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             setRoles(mappedRoles);
           } else if (row.key === "users" && Array.isArray(row.value)) {
             setUsers(row.value);
+          } else if (row.key === "store_settings" && row.value) {
+            setStoreSettings((prev) => ({ ...prev, ...row.value }));
           }
         }
       )
@@ -976,6 +1016,30 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       category: "user",
       title: "権限の変更",
       detail: `「${u?.displayName || userId}」の権限を「${role === "executive" ? "幹部" : "スタッフ"}」に変更しました`,
+    });
+  };
+
+  // 従業員一覧の並び順の更新・一括保存
+  const updateUsersOrder = (orderedUsers: StaffUser[]) => {
+    const updated = orderedUsers.map((u, idx) => ({
+      ...u,
+      order: idx,
+    }));
+    setUsers(updated);
+    syncStateToCloud("users", updated);
+  };
+
+  // 店舗・機能利用設定の更新 (クラフト作成・在庫管理のする/しない)
+  const updateStoreSettings = (updates: Partial<StoreSettings>) => {
+    setStoreSettings((prev) => {
+      const next = { ...prev, ...updates };
+      syncStateToCloud("store_settings", next);
+      return next;
+    });
+    logAction({
+      category: "role",
+      title: "店舗機能設定の更新",
+      detail: `機能設定を更新しました (クラフト作成: ${updates.enableCrafting !== undefined ? (updates.enableCrafting ? "有効" : "停止") : "維持"}, 在庫管理: ${updates.enableInventory !== undefined ? (updates.enableInventory ? "有効" : "停止") : "維持"})`,
     });
   };
 
@@ -1228,11 +1292,39 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         }
       });
 
-      const inventoryAdjustCount = weekLogs.filter(
+      const userInventoryLogs = weekLogs.filter(
         (l) => l.userName === u.displayName && l.category === "inventory"
-      ).length;
+      );
+      const inventoryAdjustCount = userInventoryLogs.length;
+
+      // 素材調達・補充個数の集計 (ログからの自動検出 + 手動上書き値の反映)
+      let logIngredientCount = 0;
+      userInventoryLogs.forEach((l) => {
+        const itemMatch = l.title.match(/\((.+?)\)/);
+        const itemName = itemMatch ? itemMatch[1] : "";
+        const targetItem = items.find((it) => it.name === itemName);
+        const isIngredient = targetItem ? targetItem.type === "ingredient" : (l.detail.includes("素材") || l.detail.includes("仕入") || l.title.includes("素材"));
+
+        if (isIngredient) {
+          const qtyMatch = l.detail.match(/在庫数\s*(\d+)\s*→\s*(\d+)/);
+          if (qtyMatch) {
+            const before = parseInt(qtyMatch[1], 10) || 0;
+            const after = parseInt(qtyMatch[2], 10) || 0;
+            if (after > before) {
+              logIngredientCount += (after - before);
+            } else {
+              logIngredientCount += 1;
+            }
+          } else {
+            logIngredientCount += 1;
+          }
+        }
+      });
 
       const savedUserBonus = savedRecord?.bonuses?.[u.id];
+      const savedIngredientCount = savedUserBonus?.ingredientCount;
+      const ingredientItemsCount = typeof savedIngredientCount === "number" ? savedIngredientCount : logIngredientCount;
+
       const bonusAmount = savedUserBonus ? savedUserBonus.amount : (u.bonusAmount || 0);
       const bonusNote = savedUserBonus ? savedUserBonus.note : (u.bonusNote || "");
       const isPaid = savedUserBonus ? Boolean(savedUserBonus.isPaid) : false;
@@ -1285,6 +1377,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         craftCount,
         craftItemsCount,
         inventoryAdjustCount,
+        ingredientItemsCount,
         bonusAmount,
         bonusNote,
         isPaid,
@@ -2143,8 +2236,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         updateUserPass,
         updateUserRole,
         updateUserBonus,
+        updateUsersOrder,
         deleteUser,
         getStaffPerformances,
+        storeSettings,
+        updateStoreSettings,
         roles,
         addRole,
         updateRole,

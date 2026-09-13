@@ -18,9 +18,18 @@ export interface StaffUser {
   role: Role;       // 互換用基本権限 ("executive" | "staff")
   roleId?: string;  // 紐づくカスタムロールのID
   roleName?: string;// 役職の表示名 (例: "店主")
+  order?: number;   // 従業員一覧の並び順 (昇順)
   bonusAmount?: number; // 幹部が設定するボーナス額 (¥)
   bonusNote?: string;   // 査定理由・評価メモ
   created_at: string;
+}
+
+export interface StoreSettings {
+  enableCrafting: boolean;          // クラフト作成機能をする(true)/しない(false)
+  enableInventory: boolean;         // 全体在庫管理をする(true)/しない(false)
+  ingredientRewardRate?: number;    // 素材調達手当 (円/個)
+  craftRewardRate?: number;         // クラフト仕込み手当 (円/個)
+  storeRemainingBonusRate?: number; // 店舗7割歩合率 (%)
 }
 
 export type ItemType = "product" | "ingredient"; // product: 販売商品, ingredient: 作成用素材
@@ -169,6 +178,7 @@ export interface StaffPerformance {
   craftCount: number;          // クラフト（料理作成）実行回数
   totalItemsCrafted: number;   // 作成した料理の合計個数
   inventoryAdjustCount: number;// 在庫調整・補充回数
+  ingredientItemsCount?: number;// 調達・補充した素材アイテムの個数
   lastActiveTime?: string;     // 最終アクション時刻
   currentBonus: number;        // 現在設定されているボーナス額
   bonusNote?: string;          // 査定メモ
@@ -202,6 +212,7 @@ export interface StaffWeeklyStat {
   craftCount: number;          // クラフト実行回数
   craftItemsCount: number;     // 作成した料理の合計個数
   inventoryAdjustCount: number;// 食材調達・補充回数
+  ingredientItemsCount: number;// 調達・補充した素材アイテムの個数
   bonusAmount: number;         // 店主が決めたこの週のボーナス額 (¥)
   bonusNote?: string;          // 査定評価メモ
   isPaid?: boolean;            // この週のボーナスが支払済みかどうか
