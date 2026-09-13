@@ -31,6 +31,7 @@ export const defaultCustomRoles: CustomRole[] = [
     name: "店主 (オーナー)",
     color: "amber",
     isExecutive: true,
+    baseAllowance: 50000,
     description: "店舗最高責任者・全権限（kein）",
     isDefault: false,
   },
@@ -39,6 +40,7 @@ export const defaultCustomRoles: CustomRole[] = [
     name: "店長 / 幹部",
     color: "rose",
     isExecutive: true,
+    baseAllowance: 40000,
     description: "店舗運営・管理業務・ボーナス査定",
     isDefault: false,
   },
@@ -47,6 +49,7 @@ export const defaultCustomRoles: CustomRole[] = [
     name: "料理長",
     color: "emerald",
     isExecutive: false,
+    baseAllowance: 30000,
     description: "厨房統括・仕込み・クラフト責任者",
     isDefault: false,
   },
@@ -55,6 +58,7 @@ export const defaultCustomRoles: CustomRole[] = [
     name: "一般スタッフ",
     color: "blue",
     isExecutive: false,
+    baseAllowance: 15000,
     description: "ホール接客・調理作成・レジ販売",
     isDefault: true,
   },
@@ -63,6 +67,7 @@ export const defaultCustomRoles: CustomRole[] = [
     name: "アルバイト / 見習い",
     color: "emerald",
     isExecutive: false,
+    baseAllowance: 10000,
     description: "仕込み補助・接客サポート",
     isDefault: false,
   },
@@ -170,17 +175,28 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   // 役職・カスタムロール状態
   const [roles, setRoles] = useState<CustomRole[]>(() => {
+    let current = defaultCustomRoles;
     if (typeof window !== "undefined") {
       const saved = localStorage.getItem("fivem_sakura_roles");
       if (saved) {
         try {
-          return JSON.parse(saved);
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            current = parsed;
+          }
         } catch {
           // ignore
         }
       }
     }
-    return defaultCustomRoles;
+    return current.map((r) => {
+      if (typeof r.baseAllowance === "number") return r;
+      if (r.id === "role-owner") return { ...r, baseAllowance: 50000 };
+      if (r.id === "role-manager" || r.isExecutive) return { ...r, baseAllowance: 40000 };
+      if (r.id === "role-chef" || r.name.includes("正社員")) return { ...r, baseAllowance: 30000 };
+      if (r.id === "role-staff" || r.name.includes("アルバイト")) return { ...r, baseAllowance: 15000 };
+      return { ...r, baseAllowance: 10000 };
+    });
   });
 
   // ユーザー・認証状態 (初期は管理者 kein / PASS 001)
@@ -633,7 +649,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           } else if (row.key === "weekly_bonuses" && row.value) {
             setWeeklyBonuses(row.value);
           } else if (row.key === "roles" && Array.isArray(row.value)) {
-            setRoles(row.value);
+            const mappedRoles: CustomRole[] = row.value.map((r: any) => {
+              if (typeof r.baseAllowance === "number") return r;
+              if (r.id === "role-owner") return { ...r, baseAllowance: 50000 };
+              if (r.id === "role-manager" || r.isExecutive) return { ...r, baseAllowance: 40000 };
+              if (r.id === "role-chef" || (r.name && r.name.includes("正社員"))) return { ...r, baseAllowance: 30000 };
+              if (r.id === "role-staff" || (r.name && r.name.includes("アルバイト"))) return { ...r, baseAllowance: 15000 };
+              return { ...r, baseAllowance: 10000 };
+            });
+            setRoles(mappedRoles);
           } else if (row.key === "users" && Array.isArray(row.value)) {
             setUsers(row.value);
           }
@@ -796,7 +820,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           } else if (row.key === "weekly_bonuses" && row.value) {
             setWeeklyBonuses(row.value);
           } else if (row.key === "roles" && Array.isArray(row.value)) {
-            setRoles(row.value);
+            const mappedRoles: CustomRole[] = row.value.map((r: any) => {
+              if (typeof r.baseAllowance === "number") return r;
+              if (r.id === "role-owner") return { ...r, baseAllowance: 50000 };
+              if (r.id === "role-manager" || r.isExecutive) return { ...r, baseAllowance: 40000 };
+              if (r.id === "role-chef" || (r.name && r.name.includes("正社員"))) return { ...r, baseAllowance: 30000 };
+              if (r.id === "role-staff" || (r.name && r.name.includes("アルバイト"))) return { ...r, baseAllowance: 15000 };
+              return { ...r, baseAllowance: 10000 };
+            });
+            setRoles(mappedRoles);
           } else if (row.key === "users" && Array.isArray(row.value)) {
             setUsers(row.value);
           }

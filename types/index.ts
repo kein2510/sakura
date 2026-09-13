@@ -5,6 +5,7 @@ export interface CustomRole {
   name: string;        // 役職名 (例: "店主", "店長", "料理長", "一般スタッフ", "アルバイト")
   color: string;       // バッジカラー ("amber" | "rose" | "emerald" | "blue" | "purple" | "stone")
   isExecutive: boolean;// 幹部専用コンソールへのアクセス権限
+  baseAllowance?: number; // ロールごとの週次基本手当 (¥)
   description?: string;// 役職の説明や業務内容
   isDefault?: boolean; // 新規追加時の初期ロール
 }

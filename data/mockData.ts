@@ -190,7 +190,7 @@ export const mockProducts: Item[] = [
     category_name: "寿司",
     unit: "個",
     current_stock: 12,
-    selling_price: 3800,
+    selling_price: 10000,
     cost_price: 1250,
     image_url: "https://images.unsplash.com/photo-1579871494447-9811cf80d66c?w=400&h=300&fit=crop",
     recipe: [
@@ -210,7 +210,7 @@ export const mockProducts: Item[] = [
     category_name: "刺身・鮮魚",
     unit: "個",
     current_stock: 8,
-    selling_price: 2600,
+    selling_price: 10000,
     cost_price: 900,
     image_url: "https://images.unsplash.com/photo-1534422298391-e4f8c172dddb?w=400&h=300&fit=crop",
     recipe: [
@@ -228,7 +228,7 @@ export const mockProducts: Item[] = [
     category_name: "肉料理",
     unit: "個",
     current_stock: 5,
-    selling_price: 2980,
+    selling_price: 10000,
     cost_price: 1580,
     image_url: "https://images.unsplash.com/photo-1544025162-d76694265947?w=400&h=300&fit=crop",
     recipe: [
@@ -248,7 +248,7 @@ export const mockProducts: Item[] = [
     category_name: "地酒・アルコール",
     unit: "本",
     current_stock: 20,
-    selling_price: 1200,
+    selling_price: 10000,
     cost_price: 400,
     image_url: "https://images.unsplash.com/photo-1510812431401-41d2bd2722f3?w=400&h=300&fit=crop",
     recipe: [
@@ -269,7 +269,7 @@ export const mockProducts: Item[] = [
     category_name: "ピッツァ",
     unit: "枚",
     current_stock: 10,
-    selling_price: 2400,
+    selling_price: 10000,
     cost_price: 650,
     image_url: "https://images.unsplash.com/photo-1604382355076-af4b0eb60143?w=400&h=300&fit=crop",
     recipe: [
@@ -288,7 +288,7 @@ export const mockProducts: Item[] = [
     category_name: "パスタ",
     unit: "皿",
     current_stock: 15,
-    selling_price: 2200,
+    selling_price: 10000,
     cost_price: 800,
     image_url: "https://images.unsplash.com/photo-1621996346565-e3d5d62810d7?w=400&h=300&fit=crop",
     recipe: [
@@ -308,7 +308,7 @@ export const mockProducts: Item[] = [
     category_name: "イタリアワイン",
     unit: "本",
     current_stock: 18,
-    selling_price: 1800,
+    selling_price: 10000,
     cost_price: 600,
     image_url: "https://images.unsplash.com/photo-1506377247377-2a5b3b417ebb?w=400&h=300&fit=crop",
     recipe: [

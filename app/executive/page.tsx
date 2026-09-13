@@ -151,14 +151,17 @@ export default function ExecutivePage() {
   const [newRoleName, setNewRoleName] = useState("");
   const [newRoleColor, setNewRoleColor] = useState("amber");
   const [newRoleIsExec, setNewRoleIsExec] = useState(false);
+  const [newRoleBaseAllowance, setNewRoleBaseAllowance] = useState<number>(20000);
   const [newRoleDesc, setNewRoleDesc] = useState("");
   const [editingRoleId, setEditingRoleId] = useState<string | null>(null);
   const [editRoleName, setEditRoleName] = useState("");
   const [editRoleColor, setEditRoleColor] = useState("amber");
   const [editRoleIsExec, setEditRoleIsExec] = useState(false);
+  const [editRoleBaseAllowance, setEditRoleBaseAllowance] = useState<number>(20000);
   const [editRoleDesc, setEditRoleDesc] = useState("");
 
   // --- 週次（日曜始まり土曜締め）ボーナス査定 & 支給管理 state ---
+  const [showBonusHelp, setShowBonusHelp] = useState<boolean>(true);
   const availableWeeks = getRecentWeeks(8);
   // デフォルトは先週（締め済・査定対象週）、なければ今週
   const [selectedWeekKey, setSelectedWeekKey] = useState<string>(
@@ -316,11 +319,13 @@ export default function ExecutivePage() {
       name: newRoleName.trim(),
       color: newRoleColor,
       isExecutive: newRoleIsExec,
+      baseAllowance: Math.max(0, newRoleBaseAllowance),
       description: newRoleDesc.trim(),
     });
     setNewRoleName("");
     setNewRoleDesc("");
     setNewRoleIsExec(false);
+    setNewRoleBaseAllowance(20000);
     alert(`新しい役職「${newRoleName.trim()}」を作成しました！`);
   };
 
@@ -330,6 +335,7 @@ export default function ExecutivePage() {
     setEditRoleName(role.name);
     setEditRoleColor(role.color);
     setEditRoleIsExec(role.isExecutive);
+    setEditRoleBaseAllowance(role.baseAllowance ?? 20000);
     setEditRoleDesc(role.description || "");
   };
 
@@ -343,6 +349,7 @@ export default function ExecutivePage() {
       name: editRoleName.trim(),
       color: editRoleColor,
       isExecutive: editRoleIsExec,
+      baseAllowance: Math.max(0, editRoleBaseAllowance),
       description: editRoleDesc.trim(),
     });
     setEditingRoleId(null);
@@ -425,13 +432,22 @@ export default function ExecutivePage() {
     return weeklyBonusNotes[userId] !== undefined ? weeklyBonusNotes[userId] : (currentNote || "");
   };
 
+  // スタッフの役職に応じた基本手当を取得
+  const getStaffRoleAllowance = (stat: StaffWeeklyStat): number => {
+    const staffRole =
+      roles.find((r) => r.id === stat.roleId) ||
+      roles.find((r) => r.name === stat.roleName);
+    return staffRole?.baseAllowance ?? baseAllowance;
+  };
+
   // 目安ボーナス（自動推奨値）の計算
   // 売上時はゲーム内ですでに3割をインセンティブとして手渡し済み。
-  // 店舗手元残り（7割）からの還元率 + クラフト仕込み手当 + 基本手当
+  // 店舗手元残り（7割）からの還元率 + クラフト仕込み手当 + ロール別基本手当
   const calculateRecommendedWeeklyBonus = (stat: StaffWeeklyStat) => {
     const storeRemainingShare = Math.round(stat.storeRemaining70 * (storeRemainingBonusRate / 100));
     const craftReward = stat.craftItemsCount * craftRewardRate;
-    return baseAllowance + storeRemainingShare + craftReward;
+    const roleAllowance = getStaffRoleAllowance(stat);
+    return roleAllowance + storeRemainingShare + craftReward;
   };
 
   // 1人のボーナス保存
@@ -451,10 +467,11 @@ export default function ExecutivePage() {
   // 推奨額を入力欄に反映
   const handleApplyRecommendedToStaff = (stat: StaffWeeklyStat) => {
     const rec = calculateRecommendedWeeklyBonus(stat);
+    const allowance = getStaffRoleAllowance(stat);
     setWeeklyBonusInputs((prev) => ({ ...prev, [stat.userId]: rec }));
     setWeeklyBonusNotes((prev) => ({
       ...prev,
-      [stat.userId]: `店舗残り7割からの歩合${storeRemainingBonusRate}%+仕込手当(¥${craftRewardRate}/個)+基本手当(¥${baseAllowance.toLocaleString()})`,
+      [stat.userId]: `店舗残り7割歩合${storeRemainingBonusRate}%+仕込手当(¥${craftRewardRate}/個)+${stat.roleName || "役職"}手当(¥${allowance.toLocaleString()})`,
     }));
   };
 
@@ -464,8 +481,9 @@ export default function ExecutivePage() {
     const newNotes: { [id: string]: string } = {};
     currentWeeklySummary.staffStats.forEach((stat) => {
       const rec = calculateRecommendedWeeklyBonus(stat);
+      const allowance = getStaffRoleAllowance(stat);
       newInputs[stat.userId] = rec;
-      newNotes[stat.userId] = `店舗残り7割からの歩合${storeRemainingBonusRate}%+仕込手当(¥${craftRewardRate}/個)+基本手当(¥${baseAllowance.toLocaleString()})`;
+      newNotes[stat.userId] = `店舗残り7割歩合${storeRemainingBonusRate}%+仕込手当(¥${craftRewardRate}/個)+${stat.roleName || "役職"}手当(¥${allowance.toLocaleString()})`;
     });
     setWeeklyBonusInputs((prev) => ({ ...prev, ...newInputs }));
     setWeeklyBonusNotes((prev) => ({ ...prev, ...newNotes }));
@@ -1127,6 +1145,29 @@ export default function ExecutivePage() {
                 </label>
               </div>
 
+              {/* 週次基本手当入力 */}
+              <div>
+                <label className="block text-xs font-bold text-stone-300 mb-1">
+                  週次基本手当 (円):
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-2 text-stone-500 font-bold text-xs">¥</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1000"
+                    placeholder="20000"
+                    value={newRoleBaseAllowance}
+                    onChange={(e) => setNewRoleBaseAllowance(parseInt(e.target.value) || 0)}
+                    className="w-full pl-7 pr-3 py-2 bg-stone-950 rounded-xl border border-stone-700 text-xs font-bold text-white focus:ring-2 focus:ring-purple-500"
+                    required
+                  />
+                </div>
+                <span className="text-[10px] text-stone-400 mt-0.5 block">
+                  この役職のスタッフに毎週支給する基礎手当額（ボーナス試算時に自動反映）
+                </span>
+              </div>
+
               {/* 説明・備考メモ */}
               <div>
                 <label className="block text-xs font-bold text-stone-300 mb-1">
@@ -1201,6 +1242,9 @@ export default function ExecutivePage() {
                               <span className="text-[11px] text-stone-400 font-bold">
                                 所属: {assignedUsers.length}名
                               </span>
+                              <span className="text-[11px] font-bold text-amber-300 bg-amber-950/80 border border-amber-500/40 px-2.5 py-0.5 rounded-full">
+                                💰 週次基本手当: ¥{(role.baseAllowance ?? 20000).toLocaleString()}
+                              </span>
                             </div>
                             {role.description && (
                               <p className="text-xs text-stone-400 mt-1">{role.description}</p>
@@ -1259,6 +1303,21 @@ export default function ExecutivePage() {
                           </div>
                         </div>
 
+                        {/* 週次基本手当の編集 */}
+                        <div>
+                          <label className="block text-xs font-bold text-stone-300 mb-1">
+                            週次基本手当 (円):
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            step="1000"
+                            value={editRoleBaseAllowance}
+                            onChange={(e) => setEditRoleBaseAllowance(parseInt(e.target.value) || 0)}
+                            className="w-full px-3 py-1.5 bg-stone-950 rounded-lg border border-stone-700 text-xs font-bold text-white focus:border-purple-500"
+                          />
+                        </div>
+
                         <div>
                           <label className="flex items-center gap-2 cursor-pointer">
                             <input
@@ -1314,6 +1373,71 @@ export default function ExecutivePage() {
       ======================================================== */}
       {activeTab === "bonus" && (
         <div className="space-y-6">
+          {/* 💡 ボーナスの出し方・査定ルール解説パネル（折りたたみ可能） */}
+          <div className="bg-gradient-to-r from-amber-950/60 via-stone-900 to-stone-950 rounded-3xl border border-amber-500/40 p-5 shadow-xl text-stone-100">
+            <div
+              className="flex items-center justify-between cursor-pointer"
+              onClick={() => setShowBonusHelp(!showBonusHelp)}
+            >
+              <div className="flex items-center gap-3">
+                <span className="p-2 rounded-2xl bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                  <Calculator className="w-5 h-5" />
+                </span>
+                <div>
+                  <h3 className="text-sm font-black text-white flex items-center gap-2">
+                    💡 【和食さくら】ボーナス査定・出し方のルール解説
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                      店主必読マニュアル
+                    </span>
+                  </h3>
+                  <p className="text-xs text-stone-400 mt-0.5">
+                    日々の即時手渡し3割 ＋ 週締め時のボーナス（役職手当＋7割歩合＋仕込み手当）の算出基準
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="text-xs text-amber-400 font-bold hover:text-amber-300 px-3 py-1.5 rounded-xl bg-stone-900 border border-stone-800 cursor-pointer"
+              >
+                {showBonusHelp ? "折りたたむ ▲" : "仕組みを見る ▼"}
+              </button>
+            </div>
+
+            {showBonusHelp && (
+              <div className="mt-4 pt-4 border-t border-stone-800/80 grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+                <div className="bg-stone-950/80 p-3.5 rounded-2xl border border-stone-800 space-y-1.5">
+                  <div className="flex items-center gap-1.5 text-amber-300 font-bold">
+                    <span className="w-5 h-5 rounded-full bg-amber-500/20 flex items-center justify-center text-[11px] text-amber-300 font-black">1</span>
+                    日々の即時インセンティブ（3割）
+                  </div>
+                  <p className="text-[11px] text-stone-300 leading-relaxed">
+                    レジで料理・商品（1品10,000円等）が売れた際、売上金額の<strong className="text-amber-300">30%（3割）</strong>はその場でスタッフが受取済みの即時インセンティブです。残りの<strong className="text-emerald-300">70%</strong>が店舗の金庫に入金されます。
+                  </p>
+                </div>
+
+                <div className="bg-stone-950/80 p-3.5 rounded-2xl border border-stone-800 space-y-1.5">
+                  <div className="flex items-center gap-1.5 text-rose-300 font-bold">
+                    <span className="w-5 h-5 rounded-full bg-rose-500/20 flex items-center justify-center text-[11px] text-rose-300 font-black">2</span>
+                    週次ボーナス試算（3大構成要素）
+                  </div>
+                  <p className="text-[11px] text-stone-300 leading-relaxed">
+                    毎週日曜〜土曜締めで査定するボーナスは、<strong className="text-white">①ロール別基本手当</strong>（役職ごとの固定給）＋<strong className="text-white">②店舗残り7割からの歩合</strong>（例: 10%）＋<strong className="text-white">③クラフト仕込み手当</strong>（例: ¥100/個）の合計で推奨額が自動試算されます。
+                  </p>
+                </div>
+
+                <div className="bg-stone-950/80 p-3.5 rounded-2xl border border-stone-800 space-y-1.5">
+                  <div className="flex items-center gap-1.5 text-emerald-300 font-bold">
+                    <span className="w-5 h-5 rounded-full bg-emerald-500/20 flex items-center justify-center text-[11px] text-emerald-300 font-black">3</span>
+                    確定・支給 ＆ 未払い繰越管理
+                  </div>
+                  <p className="text-[11px] text-stone-300 leading-relaxed">
+                    査定額が決まったら「最終確定」し、現金を渡したら「支払済」にチェック。支払えなかった分は<strong className="text-amber-300">翌週以降へ「過去未払い繰越」として自動合算</strong>されるため、給与の未払い・支払漏れを完全に防止できます。
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* ① 週選択バー & 確定ステータス */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-stone-900 text-white p-5 rounded-3xl shadow-md border border-stone-800">
             <div className="flex items-center gap-3">
@@ -1650,10 +1774,10 @@ export default function ExecutivePage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-              <div className="bg-stone-950 p-3 rounded-2xl border border-stone-800">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+              <div className="bg-stone-950 p-3.5 rounded-2xl border border-stone-800">
                 <label className="block text-[11px] font-bold text-stone-300 mb-1">
-                  店舗残り7割からの歩合率 (%):
+                  ① 店舗残り7割からの歩合率 (%):
                 </label>
                 <div className="flex items-center gap-2">
                   <input
@@ -1662,15 +1786,15 @@ export default function ExecutivePage() {
                     max="100"
                     value={storeRemainingBonusRate}
                     onChange={(e) => setStoreRemainingBonusRate(parseInt(e.target.value) || 0)}
-                    className="w-20 px-2.5 py-1 bg-stone-900 rounded-lg border border-stone-700 font-black text-white focus:border-amber-500"
+                    className="w-20 px-2.5 py-1.5 bg-stone-900 rounded-xl border border-stone-700 font-black text-white focus:border-amber-500"
                   />
                   <span className="text-stone-400 font-semibold">%（手元純利益から還元）</span>
                 </div>
               </div>
 
-              <div className="bg-stone-950 p-3 rounded-2xl border border-stone-800">
+              <div className="bg-stone-950 p-3.5 rounded-2xl border border-stone-800">
                 <label className="block text-[11px] font-bold text-stone-300 mb-1">
-                  クラフト仕込み手当 (円/個):
+                  ② クラフト仕込み手当 (円/個):
                 </label>
                 <div className="flex items-center gap-2">
                   <input
@@ -1679,15 +1803,15 @@ export default function ExecutivePage() {
                     step="50"
                     value={craftRewardRate}
                     onChange={(e) => setCraftRewardRate(parseInt(e.target.value) || 0)}
-                    className="w-24 px-2.5 py-1 bg-stone-900 rounded-lg border border-stone-700 font-black text-white focus:border-amber-500"
+                    className="w-24 px-2.5 py-1.5 bg-stone-900 rounded-xl border border-stone-700 font-black text-white focus:border-amber-500"
                   />
                   <span className="text-stone-400 font-semibold">円（料理1品仕込む毎）</span>
                 </div>
               </div>
 
-              <div className="bg-stone-950 p-3 rounded-2xl border border-stone-800">
+              <div className="bg-stone-950 p-3.5 rounded-2xl border border-stone-800">
                 <label className="block text-[11px] font-bold text-stone-300 mb-1">
-                  基本手当 (ベース額):
+                  ③ 役職未設定時の標準基本手当:
                 </label>
                 <div className="flex items-center gap-2">
                   <input
@@ -1696,10 +1820,58 @@ export default function ExecutivePage() {
                     step="1000"
                     value={baseAllowance}
                     onChange={(e) => setBaseAllowance(parseInt(e.target.value) || 0)}
-                    className="w-28 px-2.5 py-1 bg-stone-900 rounded-lg border border-stone-700 font-black text-white focus:border-amber-500"
+                    className="w-28 px-2.5 py-1.5 bg-stone-900 rounded-xl border border-stone-700 font-black text-white focus:border-amber-500"
                   />
-                  <span className="text-stone-400 font-semibold">円（一律手当）</span>
+                  <span className="text-stone-400 font-semibold">円（共通フォールバック）</span>
                 </div>
+              </div>
+            </div>
+
+            {/* ロール別基本手当の一覧 ＆ クイック変更バー */}
+            <div className="p-3.5 bg-stone-950/80 rounded-2xl border border-stone-800 space-y-2">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <span className="text-[11px] font-bold text-amber-300 flex items-center gap-1.5">
+                  <Tag className="w-3.5 h-3.5 text-amber-400" />
+                  現在の役職（ロール）別 基本手当一覧（数値を直接変更して即座に反映可能）:
+                </span>
+                <span className="text-[10px] text-stone-500">
+                  ※変更した手当額は役職設定に即座に自動保存されます
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 pt-1">
+                {roles.map((r) => (
+                  <div
+                    key={r.id}
+                    className="p-2 rounded-xl bg-stone-900 border border-stone-800 flex flex-col justify-between gap-1.5"
+                  >
+                    <div className="flex items-center justify-between gap-1">
+                      <span className="text-xs font-bold text-stone-200 truncate" title={r.name}>
+                        {r.name}
+                      </span>
+                      {r.isExecutive && (
+                        <span className="text-[9px] px-1 py-0.2 rounded bg-amber-500/20 text-amber-300 shrink-0">
+                          幹部
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <span className="text-xs text-stone-500 font-bold">¥</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="1000"
+                        value={r.baseAllowance ?? 20000}
+                        onChange={(e) => {
+                          const val = parseInt(e.target.value) || 0;
+                          updateRole(r.id, { baseAllowance: val });
+                        }}
+                        className="w-full px-2 py-1 bg-stone-950 rounded-lg border border-stone-700 text-xs font-black text-amber-300 focus:border-amber-500"
+                        title="手当額を直接変更"
+                      />
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           </div>
@@ -2008,6 +2180,21 @@ export default function ExecutivePage() {
                             className="w-full px-3 py-2 bg-stone-900 rounded-xl border border-stone-700 font-black text-base text-white focus:border-amber-500"
                             placeholder="例: 35000"
                           />
+                        </div>
+
+                        {/* 推奨額の計算内訳バッジ */}
+                        <div className="mt-2 flex items-center gap-1.5 flex-wrap text-[10px] text-stone-400">
+                          <span className="font-bold text-amber-400">【推奨内訳】</span>
+                          <span className="bg-stone-900 px-2 py-0.5 rounded-md border border-stone-800 text-stone-300">
+                            役職手当: <strong className="text-amber-300">{formatCurrency(getStaffRoleAllowance(stat))}</strong>
+                            <span className="text-[9px] text-stone-400 ml-1">({stat.roleName || "役職"})</span>
+                          </span>
+                          <span className="bg-stone-900 px-2 py-0.5 rounded-md border border-stone-800 text-stone-300">
+                            7割歩合({storeRemainingBonusRate}%): <strong className="text-emerald-300">{formatCurrency(Math.round(stat.storeRemaining70 * (storeRemainingBonusRate / 100)))}</strong>
+                          </span>
+                          <span className="bg-stone-900 px-2 py-0.5 rounded-md border border-stone-800 text-stone-300">
+                            仕込み手当(¥{craftRewardRate}×{stat.craftItemsCount}品): <strong className="text-indigo-300">{formatCurrency(stat.craftItemsCount * craftRewardRate)}</strong>
+                          </span>
                         </div>
                       </div>
 
