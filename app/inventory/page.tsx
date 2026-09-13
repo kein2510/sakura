@@ -24,12 +24,13 @@ import { Item, ShopId, SHOPS } from "@/types";
 import { supabase } from "@/lib/supabase";
 
 export default function InventoryPage() {
-  const { items, products, ingredients, adjustStock, actionLogs, refreshData, cancelCraftByLog } = useApp();
+  const { items, products, ingredients, adjustStock, procureIngredient, actionLogs, refreshData, cancelCraftByLog } = useApp();
   const [selectedTab, setSelectedTab] = useState<"all" | "sakura" | "buon_viaggio" | "ingredient">("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [adjustingItem, setAdjustingItem] = useState<Item | null>(null);
   const [newStockInput, setNewStockInput] = useState<number>(0);
-  const [adjustReason, setAdjustReason] = useState<string>("仕入れ・補充");
+  const [adjustReason, setAdjustReason] = useState<string>("仕入れ・棚卸し");
+  const [customAddQuantities, setCustomAddQuantities] = useState<{ [itemId: string]: number }>({});
   const [realtimeNotice, setRealtimeNotice] = useState<string | null>(null);
 
   const handleCancelCraftLog = (logId: string, title: string) => {
@@ -472,28 +473,88 @@ export default function InventoryPage() {
                     </div>
                   </div>
 
-                  {/* 素材用のボタン: 1, 100, 1000 単位 ＋ 調整 */}
-                  <div className="flex items-center gap-1.5">
-                    {[1, 100, 1000].map((qty) => (
+                  {/* 素材用のボタン: 1, 100, 1000 単位 ＋ 任意数量入力 ＋ 調整 */}
+                  <div className="space-y-2">
+                    {/* ① プリセット追加ボタン (+1, +100, +1000) */}
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] font-bold text-stone-400 shrink-0">クイック調達:</span>
+                      {[1, 100, 1000].map((qty) => (
+                        <button
+                          key={qty}
+                          type="button"
+                          onClick={() => {
+                            procureIngredient(item.id, qty);
+                            setRealtimeNotice(`「${item.name}」を +${qty}${item.unit} 調達・納品しました（ボーナス調達手当に加算）`);
+                            setTimeout(() => setRealtimeNotice(null), 3500);
+                          }}
+                          className="flex-1 py-1.5 px-1 rounded-xl bg-stone-800 hover:bg-emerald-900/60 hover:text-emerald-300 hover:border-emerald-500/50 text-stone-100 border border-stone-700 font-black text-xs flex items-center justify-center transition-all cursor-pointer active:scale-95 shadow-xs"
+                          title={`+${qty}${item.unit} 調達・納品（ボーナス調達手当に加算）`}
+                        >
+                          +{qty.toLocaleString()}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* ② 任意数量の指定追加（ボーナス適応） ＆ 調整（ボーナス適応外） */}
+                    <div className="flex items-center gap-1.5">
+                      <div className="flex-1 flex items-center bg-stone-950 rounded-xl border border-stone-700 focus-within:border-emerald-500 px-2 py-1">
+                        <input
+                          type="number"
+                          min="1"
+                          placeholder="数量を指定して追加..."
+                          value={customAddQuantities[item.id] || ""}
+                          onChange={(e) =>
+                            setCustomAddQuantities((prev) => ({
+                              ...prev,
+                              [item.id]: Math.max(0, parseInt(e.target.value, 10) || 0),
+                            }))
+                          }
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              const qty = customAddQuantities[item.id] || 0;
+                              if (qty > 0) {
+                                procureIngredient(item.id, qty);
+                                setCustomAddQuantities((prev) => ({ ...prev, [item.id]: 0 }));
+                                setRealtimeNotice(`「${item.name}」を +${qty}${item.unit} 調達・納品しました（ボーナス調達手当に加算）`);
+                                setTimeout(() => setRealtimeNotice(null), 3500);
+                              }
+                            }
+                          }}
+                          className="w-full bg-transparent text-xs font-bold text-white placeholder:text-stone-600 focus:outline-none"
+                        />
+                        <span className="text-[10px] text-stone-400 font-bold ml-1 shrink-0">{item.unit}</span>
+                      </div>
+
                       <button
-                        key={qty}
                         type="button"
-                        onClick={() => handleQuickDelta(item, qty)}
-                        className="flex-1 py-2 px-1 rounded-xl bg-stone-800 hover:bg-stone-700 hover:border-amber-500/50 text-stone-100 border border-stone-700 font-black text-xs sm:text-sm flex items-center justify-center transition-all cursor-pointer active:scale-95 shadow-xs"
-                        title={`+${qty}${item.unit} 追加`}
+                        onClick={() => {
+                          const qty = customAddQuantities[item.id] || 0;
+                          if (qty <= 0) {
+                            alert("追加する数量を入力してください");
+                            return;
+                          }
+                          procureIngredient(item.id, qty);
+                          setCustomAddQuantities((prev) => ({ ...prev, [item.id]: 0 }));
+                          setRealtimeNotice(`「${item.name}」を +${qty}${item.unit} 調達・納品しました（ボーナス調達手当に加算）`);
+                          setTimeout(() => setRealtimeNotice(null), 3500);
+                        }}
+                        className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs flex items-center gap-1 transition-all shadow-md shadow-emerald-950/40 cursor-pointer active:scale-95 shrink-0"
+                        title="入力した数量を素材調達として追加（ボーナス調達手当に加算）"
                       >
-                        +{qty.toLocaleString()}
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>追加 (調達)</span>
                       </button>
-                    ))}
-                    <button
-                      type="button"
-                      onClick={() => handleOpenAdjust(item)}
-                      className="py-2 px-3 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-1 transition-all shadow-md shadow-amber-950/40 cursor-pointer active:scale-95 shrink-0"
-                      title="手動で在庫数を指定"
-                    >
-                      <Edit2 className="w-3.5 h-3.5" />
-                      <span>調整</span>
-                    </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleOpenAdjust(item)}
+                        className="py-1.5 px-2.5 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-300 hover:text-white border border-stone-700 font-bold text-xs flex items-center justify-center gap-1 transition-all cursor-pointer active:scale-95 shrink-0"
+                        title="棚卸し・数合わせによる在庫数調整（ボーナス調達手当には加算されません）"
+                      >
+                        <Edit2 className="w-3.5 h-3.5 text-stone-400" />
+                        <span>調整</span>
+                      </button>
+                    </div>
                   </div>
                 </div>
               )}
@@ -508,11 +569,14 @@ export default function InventoryPage() {
           <div className="bg-stone-900 rounded-3xl p-6 max-w-md w-full shadow-2xl border border-stone-800 text-white">
             <h2 className="text-base font-black text-white flex items-center gap-2">
               <Edit2 className="w-4 h-4 text-amber-500" />
-              「{adjustingItem.name}」の在庫調整
+              「{adjustingItem.name}」の在庫調整（棚卸し・数合わせ）
             </h2>
-            <p className="text-xs text-stone-400 mt-1">
-              仕入れや棚卸しによる在庫数の直接変更を行います（操作ログに記録されます）
-            </p>
+            <div className="mt-2 p-2.5 rounded-xl bg-amber-950/40 border border-amber-500/40 text-[11px] text-amber-300 space-y-1">
+              <p className="font-bold">⚠️ ボーナス査定に関するご注意:</p>
+              <p className="text-stone-300 text-[10px] leading-relaxed">
+                この「調整」は棚卸しや在庫数の実数合わせ用の機能です。ここで直接入力した増減は<strong>ボーナスの素材調達手当には加算されません</strong>。素材調達手当に反映させたい場合は、カード上の「クイック調達 (+100等)」または「追加 (調達)」をご利用ください。
+              </p>
+            </div>
 
             <form onSubmit={handleSaveAdjust} className="space-y-4 mt-4">
               <div>

@@ -147,6 +147,7 @@ interface AppContextType {
   updateRecipe: (itemId: string, recipe: RecipeRequirement[]) => void;
   updateItemImage: (itemId: string, imageUrl: string) => void;
   adjustStock: (itemId: string, newStock: number, reason?: string) => void;
+  procureIngredient: (itemId: string, quantity: number, note?: string) => void;
 
   // 履歴・ログ
   sales: Sale[];
@@ -1293,37 +1294,65 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       });
 
       const userInventoryLogs = weekLogs.filter(
-        (l) => l.userName === u.displayName && l.category === "inventory"
+        (l) => (l.userName === u.displayName || l.userName === u.username) && l.category === "inventory"
       );
       const inventoryAdjustCount = userInventoryLogs.length;
 
       // 素材調達・補充個数の集計 (ログからの自動検出 + 手動上書き値の反映)
+      // 「追加した素材はボーナスに適応させて、調整で数をそろえた時はボーナスに適応しない」
       let logIngredientCount = 0;
       userInventoryLogs.forEach((l) => {
         const itemMatch = l.title.match(/\((.+?)\)/);
         const itemName = itemMatch ? itemMatch[1] : "";
         const targetItem = items.find((it) => it.name === itemName);
-        const isIngredient = targetItem ? targetItem.type === "ingredient" : (l.detail.includes("素材") || l.detail.includes("仕入") || l.title.includes("素材"));
+        const isIngredient = targetItem ? targetItem.type === "ingredient" : (l.detail.includes("素材") || l.detail.includes("仕入") || l.title.includes("素材") || l.title.includes("調達"));
 
         if (isIngredient) {
-          const qtyMatch = l.detail.match(/在庫数\s*(\d+)\s*→\s*(\d+)/);
+          // ① 調整・棚卸し（数をそろえた時）はボーナス対象外
+          const isAdjustmentOnly =
+            l.title.includes("棚卸し") ||
+            l.detail.includes("棚卸し") ||
+            l.detail.includes("数合わせ") ||
+            (l.title.includes("手動調整") && !l.detail.includes("クイック補充") && !l.detail.includes("調達") && !l.detail.includes("納品"));
+
+          if (isAdjustmentOnly) {
+            return;
+          }
+
+          // ② クイック補充 (+1000) などのログ
+          const quickMatch = l.detail.match(/クイック補充\s*\(\+(\d+)\)/);
+          if (quickMatch) {
+            logIngredientCount += parseInt(quickMatch[1], 10) || 0;
+            return;
+          }
+
+          // ③ 素材調達・納品 (+X) などのログ
+          const procureMatch = l.detail.match(/\+(\d+)/);
+          if (l.title.includes("調達") || l.detail.includes("調達") || l.detail.includes("納品")) {
+            if (procureMatch) {
+              logIngredientCount += parseInt(procureMatch[1], 10) || 0;
+              return;
+            }
+          }
+
+          // ④ 在庫数 A → B の差分（増加分のみ、在庫数を / 在庫数 の両方に対応）
+          const qtyMatch = l.detail.match(/在庫数(?:を)?\s*(\d+)\s*→\s*(\d+)/);
           if (qtyMatch) {
             const before = parseInt(qtyMatch[1], 10) || 0;
             const after = parseInt(qtyMatch[2], 10) || 0;
             if (after > before) {
               logIngredientCount += (after - before);
-            } else {
-              logIngredientCount += 1;
             }
-          } else {
-            logIngredientCount += 1;
           }
         }
       });
 
       const savedUserBonus = savedRecord?.bonuses?.[u.id];
       const savedIngredientCount = savedUserBonus?.ingredientCount;
-      const ingredientItemsCount = typeof savedIngredientCount === "number" ? savedIngredientCount : logIngredientCount;
+      const ingredientItemsCount =
+        typeof savedIngredientCount === "number" && (savedIngredientCount > 0 || logIngredientCount === 0)
+          ? savedIngredientCount
+          : logIngredientCount;
 
       const bonusAmount = savedUserBonus ? savedUserBonus.amount : (u.bonusAmount || 0);
       const bonusNote = savedUserBonus ? savedUserBonus.note : (u.bonusNote || "");
@@ -1690,15 +1719,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       return { success: false, message: "販売する商品の個数を指定してください。" };
     }
 
-    // 在庫チェック
-    for (const [itemId, qty] of saleEntries) {
-      const item = items.find((i) => i.id === itemId);
-      if (!item) continue;
-      if (item.current_stock < qty) {
-        return {
-          success: false,
-          message: `「${item.name}」の在庫が不足しています。(現在庫: ${item.current_stock}個 / 必要: ${qty}個)`,
-        };
+    // 在庫チェック (在庫管理機能が有効な場合のみチェック)
+    if (storeSettings.enableInventory) {
+      for (const [itemId, qty] of saleEntries) {
+        const item = items.find((i) => i.id === itemId);
+        if (!item) continue;
+        if (item.current_stock < qty) {
+          return {
+            success: false,
+            message: `「${item.name}」の在庫が不足しています。(現在庫: ${item.current_stock}個 / 必要: ${qty}個)`,
+          };
+        }
       }
     }
 
@@ -1723,24 +1754,26 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       });
     }
 
-    // 在庫の減算（ローカル ＆ クラウド）
-    const updatedItemsList: Item[] = [];
-    setItems((prevItems) => {
-      return prevItems.map((item) => {
-        const orderQty = quantities[item.id] || 0;
-        if (orderQty > 0) {
-          const updated = {
-            ...item,
-            current_stock: item.current_stock - orderQty,
-            updated_at: new Date().toISOString(),
-          };
-          updatedItemsList.push(updated);
-          return updated;
-        }
-        return item;
+    // 在庫の減算（在庫管理機能が有効な場合のみ減算）
+    if (storeSettings.enableInventory) {
+      const updatedItemsList: Item[] = [];
+      setItems((prevItems) => {
+        return prevItems.map((item) => {
+          const orderQty = quantities[item.id] || 0;
+          if (orderQty > 0) {
+            const updated = {
+              ...item,
+              current_stock: Math.max(0, item.current_stock - orderQty),
+              updated_at: new Date().toISOString(),
+            };
+            updatedItemsList.push(updated);
+            return updated;
+          }
+          return item;
+        });
       });
-    });
-    syncItemsBatchToCloud(updatedItemsList);
+      syncItemsBatchToCloud(updatedItemsList);
+    }
 
     const finalShopId: ShopId = determinedShopId || "sakura";
     const shopName = finalShopId === "buon_viaggio" ? "Buon viaggio" : "和食さくら";
@@ -2204,15 +2237,38 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (updatedItem) syncItemToCloud(updatedItem);
   };
 
-  const adjustStock = (itemId: string, newStock: number, reason: string = "手動調整") => {
+  // 在庫数の手動調整（棚卸し・数合わせ）※棚卸し調整のためボーナス素材手当には加算されません
+  const adjustStock = (itemId: string, newStock: number, reason: string = "棚卸し・数合わせ") => {
     let updatedItem: Item | null = null;
     setItems((prev) =>
       prev.map((i) => {
         if (i.id === itemId) {
           logAction({
             category: "inventory",
-            title: `在庫数の手動調整 (${i.name})`,
+            title: `在庫数の棚卸し調整 (${i.name})`,
             detail: `在庫数を ${i.current_stock} → ${newStock}${i.unit} に調整 (理由: ${reason})`,
+          });
+          updatedItem = { ...i, current_stock: newStock, updated_at: new Date().toISOString() };
+          return updatedItem;
+        }
+        return i;
+      })
+    );
+    if (updatedItem) syncItemToCloud(updatedItem);
+  };
+
+  // 素材調達・納品（仕入れ・追加）※ボーナス素材手当の対象として自動集計されます！
+  const procureIngredient = (itemId: string, quantity: number, note?: string) => {
+    if (quantity <= 0) return;
+    let updatedItem: Item | null = null;
+    setItems((prev) =>
+      prev.map((i) => {
+        if (i.id === itemId) {
+          const newStock = i.current_stock + quantity;
+          logAction({
+            category: "inventory",
+            title: `素材調達・納品 (${i.name})`,
+            detail: `素材「${i.name}」を +${quantity}${i.unit} 調達・納品しました (在庫: ${i.current_stock} → ${newStock}${i.unit}${note ? ` / メモ: ${note}` : ""})`,
           });
           updatedItem = { ...i, current_stock: newStock, updated_at: new Date().toISOString() };
           return updatedItem;
@@ -2264,6 +2320,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         updateRecipe,
         updateItemImage,
         adjustStock,
+        procureIngredient,
         sales,
         actionLogs,
         logAction,

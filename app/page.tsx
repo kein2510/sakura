@@ -442,17 +442,23 @@ export default function MainPage() {
                     </div>
 
                     <div className="flex items-center gap-3 text-xs mt-1">
-                      <span className="text-stone-400">
-                        現在庫:{" "}
-                        <strong
-                          className={`font-black ${
-                            item.current_stock > 0 ? "text-emerald-400" : "text-rose-400"
-                          }`}
-                        >
-                          {item.current_stock}
-                        </strong>{" "}
-                        {item.unit}
-                      </span>
+                      {storeSettings.enableInventory ? (
+                        <span className="text-stone-400">
+                          現在庫:{" "}
+                          <strong
+                            className={`font-black ${
+                              item.current_stock > 0 ? "text-emerald-400" : "text-rose-400"
+                            }`}
+                          >
+                            {item.current_stock}
+                          </strong>{" "}
+                          {item.unit}
+                        </span>
+                      ) : (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-950/60 text-emerald-300 border border-emerald-500/40">
+                          在庫無制限 (販売可)
+                        </span>
+                      )}
 
                       {/* 選択中の小計 */}
                       {currentQty > 0 && (

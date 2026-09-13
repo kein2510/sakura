@@ -107,7 +107,7 @@ export default function ExecutivePage() {
     refreshData,
   } = useApp();
 
-  const [activeTab, setActiveTab] = useState<"users" | "roles" | "bonus" | "recipes" | "items" | "logs">("users");
+  const [activeTab, setActiveTab] = useState<"users" | "roles" | "bonus" | "recipes" | "items" | "logs" | "settings">("users");
   const [realtimeNotice, setRealtimeNotice] = useState<string | null>(null);
 
   // 幹部ページの Supabase Realtime サブスクリプション
@@ -119,11 +119,8 @@ export default function ExecutivePage() {
         { event: "*", schema: "public", table: "sakura_system_state" },
         (payload) => {
           refreshData();
-          const row = payload.new as any;
-          if (row?.key === "vault_balance") {
-            setRealtimeNotice(`【金庫同期】金庫残高が自動更新されました (現在: ¥${Number(row.value?.balance || 0).toLocaleString()})`);
-          } else {
-            setRealtimeNotice("【システム同期】幹部設定データが自動同期されました！");
+          if (payload.eventType === "UPDATE") {
+            setRealtimeNotice("幹部設定（役職・店舗設定など）がクラウド同期されました！");
           }
           setTimeout(() => setRealtimeNotice(null), 3500);
         }
@@ -174,9 +171,9 @@ export default function ExecutivePage() {
   // --- 週次（日曜始まり土曜締め）ボーナス査定 & 支給管理 state ---
   const [showBonusHelp, setShowBonusHelp] = useState<boolean>(true);
   const availableWeeks = getRecentWeeks(8);
-  // デフォルトは先週（締め済・査定対象週）、なければ今週
+  // デフォルトは今週（集計中・即座に確認可能）、または先週
   const [selectedWeekKey, setSelectedWeekKey] = useState<string>(
-    availableWeeks[1]?.weekKey || availableWeeks[0]?.weekKey
+    availableWeeks[0]?.weekKey || ""
   );
   const [weeklyBonusInputs, setWeeklyBonusInputs] = useState<{ [userId: string]: number }>({});
   const [weeklyBonusNotes, setWeeklyBonusNotes] = useState<{ [userId: string]: string }>({});
@@ -831,106 +828,6 @@ export default function ExecutivePage() {
         </div>
       </div>
 
-      {/* ⚙️ 店舗・機能利用設定（クラフト作成 ＆ 在庫管理をする/しない設定） */}
-      <div className="bg-stone-900/90 rounded-3xl border border-stone-800 p-4 sm:p-5 shadow-xl space-y-3 text-stone-100">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-stone-800 pb-3">
-          <div>
-            <h2 className="text-sm font-black text-white flex items-center gap-2">
-              <Store className="w-4 h-4 text-amber-500" />
-              ⚙️ 店舗・機能利用設定（クラフト作成 ＆ 在庫管理をする/しない）
-            </h2>
-            <p className="text-xs text-stone-400 mt-0.5">
-              店舗の運用ルールに合わせて各機能の利用ON/OFFを切り替えます
-            </p>
-          </div>
-          <span className="text-[11px] text-stone-500 font-mono">
-            ※設定は即座に販売レジ画面・サイドバーに自動反映されます
-          </span>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-          {/* ① クラフト作成機能 */}
-          <div className={`p-4 rounded-2xl border transition-all flex items-center justify-between gap-3 ${
-            storeSettings.enableCrafting
-              ? "bg-stone-950 border-emerald-500/50 shadow-xs"
-              : "bg-stone-950/60 border-stone-800 opacity-80"
-          }`}>
-            <div className="flex items-start gap-3">
-              <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-lg shrink-0 ${
-                storeSettings.enableCrafting ? "bg-emerald-950 text-emerald-400 border border-emerald-600/40" : "bg-stone-800 text-stone-500"
-              }`}>
-                🔨
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="font-extrabold text-sm text-white">クラフト作成機能</span>
-                  <span className={`text-[10px] font-black px-2 py-0.2 rounded-full ${
-                    storeSettings.enableCrafting ? "bg-emerald-950 text-emerald-300 border border-emerald-500/50" : "bg-stone-800 text-stone-400"
-                  }`}>
-                    {storeSettings.enableCrafting ? "する (有効中)" : "しない (停止中)"}
-                  </span>
-                </div>
-                <p className="text-[11px] text-stone-400 mt-1">
-                  メイン画面での素材消費料理作成。「しない」にすると販売レジ専任になります。
-                </p>
-              </div>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => updateStoreSettings({ enableCrafting: !storeSettings.enableCrafting })}
-              className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all shrink-0 cursor-pointer shadow-md ${
-                storeSettings.enableCrafting
-                  ? "bg-emerald-600 hover:bg-emerald-700 text-white"
-                  : "bg-stone-800 hover:bg-stone-700 text-stone-300 border border-stone-700"
-              }`}
-            >
-              {storeSettings.enableCrafting ? "する (有効中)" : "しない (停止中)"}
-            </button>
-          </div>
-
-          {/* ② 全体在庫管理機能 */}
-          <div className={`p-4 rounded-2xl border transition-all flex items-center justify-between gap-3 ${
-            storeSettings.enableInventory
-              ? "bg-stone-950 border-indigo-500/50 shadow-xs"
-              : "bg-stone-950/60 border-stone-800 opacity-80"
-          }`}>
-            <div className="flex items-start gap-3">
-              <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-lg shrink-0 ${
-                storeSettings.enableInventory ? "bg-indigo-950 text-indigo-400 border border-indigo-600/40" : "bg-stone-800 text-stone-500"
-              }`}>
-                📦
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="font-extrabold text-sm text-white">全体在庫管理機能</span>
-                  <span className={`text-[10px] font-black px-2 py-0.2 rounded-full ${
-                    storeSettings.enableInventory ? "bg-indigo-950 text-indigo-300 border border-indigo-500/50" : "bg-stone-800 text-stone-400"
-                  }`}>
-                    {storeSettings.enableInventory ? "する (有効中)" : "しない (停止中)"}
-                  </span>
-                </div>
-                <p className="text-[11px] text-stone-400 mt-1">
-                  全体在庫一覧メニュー。「しない」にするとサイドバーの一般アクセスが非表示になります。
-                </p>
-              </div>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => updateStoreSettings({ enableInventory: !storeSettings.enableInventory })}
-              className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all shrink-0 cursor-pointer shadow-md ${
-                storeSettings.enableInventory
-                  ? "bg-indigo-600 hover:bg-indigo-700 text-white"
-                  : "bg-stone-800 hover:bg-stone-700 text-stone-300 border border-stone-700"
-              }`}
-            >
-              {storeSettings.enableInventory ? "する (有効中)" : "しない (停止中)"}
-            </button>
-          </div>
-        </div>
-      </div>
-
       {/* 幹部タブラベル */}
       <div className="flex flex-wrap gap-2 border-b border-stone-800 pb-3">
         <button
@@ -1003,6 +900,18 @@ export default function ExecutivePage() {
         >
           <History className="w-4 h-4 text-amber-400" />
           📜 店舗操作ログ監査 ({actionLogs.length}件)
+        </button>
+
+        <button
+          onClick={() => setActiveTab("settings")}
+          className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 cursor-pointer ${
+            activeTab === "settings"
+              ? "bg-amber-600 text-white shadow-md shadow-amber-900/30 scale-[1.02]"
+              : "bg-stone-900/90 text-stone-300 hover:bg-stone-800 hover:text-white border border-stone-800"
+          }`}
+        >
+          <Sliders className="w-4 h-4 text-amber-400" />
+          ⚙️ 店舗・機能利用設定
         </button>
       </div>
 
@@ -1776,7 +1685,35 @@ export default function ExecutivePage() {
                   )}
                 </div>
 
-                <div className="flex items-center gap-2 mt-1">
+                <div className="flex items-center gap-2 mt-1 flex-wrap">
+                  {/* 今週 / 先週 クイック切替ボタン */}
+                  <div className="flex items-center bg-stone-900 rounded-xl p-0.5 border border-stone-700">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedWeekKey(availableWeeks[0]?.weekKey)}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        selectedWeekKey === availableWeeks[0]?.weekKey
+                          ? "bg-amber-600 text-white shadow-xs"
+                          : "text-stone-400 hover:text-white"
+                      }`}
+                    >
+                      🔥 今週 (集計中)
+                    </button>
+                    {availableWeeks[1] && (
+                      <button
+                        type="button"
+                        onClick={() => setSelectedWeekKey(availableWeeks[1]?.weekKey)}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                          selectedWeekKey === availableWeeks[1]?.weekKey
+                            ? "bg-amber-600 text-white shadow-xs"
+                            : "text-stone-400 hover:text-white"
+                        }`}
+                      >
+                        📋 先週 (締め済・査定週)
+                      </button>
+                    )}
+                  </div>
+
                   <select
                     value={selectedWeekKey}
                     onChange={(e) => setSelectedWeekKey(e.target.value)}
@@ -3719,6 +3656,110 @@ export default function ExecutivePage() {
                 );
               })
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================
+          タブ7: ⚙️ 店舗・機能利用設定（クラフト作成 ＆ 在庫管理）
+      ======================================================== */}
+      {activeTab === "settings" && (
+        <div className="bg-stone-900/90 rounded-3xl border border-stone-800 p-6 shadow-xl space-y-6 text-stone-100 backdrop-blur-sm">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-stone-800 pb-3">
+            <div>
+              <h2 className="text-base font-black text-white flex items-center gap-2">
+                <Sliders className="w-5 h-5 text-amber-400" />
+                ⚙️ 店舗・機能利用設定（クラフト作成 ＆ 在庫管理をする/しない）
+              </h2>
+              <p className="text-xs text-stone-400 mt-0.5">
+                店舗の運用ルールに合わせて各機能の利用ON/OFFを切り替えます
+              </p>
+            </div>
+            <span className="text-[11px] text-stone-500 font-mono">
+              ※設定は即座に販売レジ画面・サイドバーに自動反映されます
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* ① クラフト作成機能 */}
+            <div className={`p-5 rounded-2xl border transition-all flex items-center justify-between gap-4 ${
+              storeSettings.enableCrafting
+                ? "bg-stone-950 border-emerald-500/50 shadow-xs"
+                : "bg-stone-950/60 border-stone-800 opacity-80"
+            }`}>
+              <div className="flex items-start gap-3">
+                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-xl shrink-0 ${
+                  storeSettings.enableCrafting ? "bg-emerald-950 text-emerald-400 border border-emerald-600/40" : "bg-stone-800 text-stone-500"
+                }`}>
+                  🔨
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-extrabold text-base text-white">クラフト作成機能</span>
+                    <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full ${
+                      storeSettings.enableCrafting ? "bg-emerald-950 text-emerald-300 border border-emerald-500/50" : "bg-stone-800 text-stone-400"
+                    }`}>
+                      {storeSettings.enableCrafting ? "する (有効中)" : "しない (停止中)"}
+                    </span>
+                  </div>
+                  <p className="text-xs text-stone-400 mt-1 leading-relaxed">
+                    メイン画面での素材消費料理作成。「しない」に設定するとメイン画面の作成ボタンが非表示になり、販売レジ専任になります。
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => updateStoreSettings({ enableCrafting: !storeSettings.enableCrafting })}
+                className={`px-4 py-2.5 rounded-xl text-xs font-black transition-all shrink-0 cursor-pointer shadow-md active:scale-95 ${
+                  storeSettings.enableCrafting
+                    ? "bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-900/30"
+                    : "bg-stone-800 hover:bg-stone-700 text-stone-300 border border-stone-700"
+                }`}
+              >
+                {storeSettings.enableCrafting ? "する (有効中)" : "しない (停止中)"}
+              </button>
+            </div>
+
+            {/* ② 全体在庫管理機能 */}
+            <div className={`p-5 rounded-2xl border transition-all flex items-center justify-between gap-4 ${
+              storeSettings.enableInventory
+                ? "bg-stone-950 border-indigo-500/50 shadow-xs"
+                : "bg-stone-950/60 border-stone-800 opacity-80"
+            }`}>
+              <div className="flex items-start gap-3">
+                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-xl shrink-0 ${
+                  storeSettings.enableInventory ? "bg-indigo-950 text-indigo-400 border border-indigo-600/40" : "bg-stone-800 text-stone-500"
+                }`}>
+                  📦
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-extrabold text-base text-white">全体在庫管理機能</span>
+                    <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full ${
+                      storeSettings.enableInventory ? "bg-indigo-950 text-indigo-300 border border-indigo-500/50" : "bg-stone-800 text-stone-400"
+                    }`}>
+                      {storeSettings.enableInventory ? "する (有効中)" : "しない (停止中)"}
+                    </span>
+                  </div>
+                  <p className="text-xs text-stone-400 mt-1 leading-relaxed">
+                    全体在庫一覧メニュー。「しない」に設定するとサイドバーの一般アクセスが非表示になり、商品販売時も在庫チェック・減算をスキップして在庫がなくても販売可能になります。
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => updateStoreSettings({ enableInventory: !storeSettings.enableInventory })}
+                className={`px-4 py-2.5 rounded-xl text-xs font-black transition-all shrink-0 cursor-pointer shadow-md active:scale-95 ${
+                  storeSettings.enableInventory
+                    ? "bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-900/30"
+                    : "bg-stone-800 hover:bg-stone-700 text-stone-300 border border-stone-700"
+                }`}
+              >
+                {storeSettings.enableInventory ? "する (有効中)" : "しない (停止中)"}
+              </button>
+            </div>
           </div>
         </div>
       )}
