@@ -2495,31 +2495,15 @@ export default function ExecutivePage() {
                         </span>
                       </div>
 
-                      {/* ⑤ 素材調達実績（手動調整・手当反映） */}
-                      <div className={`p-3.5 rounded-2xl ${storeSettings.enableInventory ? "bg-emerald-950/20 border border-emerald-500/40" : "bg-stone-950 border border-stone-800 opacity-50"}`}>
-                        <div className="flex items-center justify-between">
-                          <span className="text-[11px] font-bold text-emerald-400 block">
-                            ⑤ 素材調達数
-                          </span>
-                          <span className="text-[9px] font-bold text-stone-400">
-                            調整可
-                          </span>
-                        </div>
-                        <div className="flex items-baseline gap-1.5 mt-1">
-                          <input
-                            type="number"
-                            min="0"
-                            value={getStaffIngredientCount(stat)}
-                            onChange={(e) => {
-                              const val = parseInt(e.target.value, 10) || 0;
-                              setStaffIngredientInputs((prev) => ({ ...prev, [stat.userId]: val }));
-                            }}
-                            className="w-16 px-1.5 py-0.5 bg-stone-900 rounded-lg border border-stone-700 font-black text-base text-emerald-300 focus:border-emerald-500"
-                            title="素材調達個数を直接入力・修正できます"
-                          />
-                          <span className="text-xs font-bold text-emerald-400">個</span>
-                        </div>
-                        <span className="text-[10px] text-stone-400 mt-1 block truncate">
+                      {/* ⑤ 素材調達実績 */}
+                      <div className={`p-3.5 rounded-2xl ${storeSettings.enableInventory ? "bg-emerald-950/30 border border-emerald-500/30" : "bg-stone-950 border border-stone-800 opacity-50"}`}>
+                        <span className="text-[11px] font-bold text-emerald-400 block">
+                          ⑤ 素材調達数
+                        </span>
+                        <span className="text-lg font-black text-emerald-300 block mt-1">
+                          {stat.ingredientItemsCount.toLocaleString()} <span className="text-xs font-bold text-emerald-400">個</span>
+                        </span>
+                        <span className="text-[10px] text-emerald-400/80 mt-0.5 block">
                           手当: ¥{ingredientRewardRate}/個
                         </span>
                       </div>
