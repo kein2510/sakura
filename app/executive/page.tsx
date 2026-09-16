@@ -108,7 +108,7 @@ export default function ExecutivePage() {
     refreshData,
   } = useApp();
 
-  const [activeTab, setActiveTab] = useState<"users" | "roles" | "bonus" | "recipes" | "items" | "logs" | "settings">("users");
+  const [activeTab, setActiveTab] = useState<"summary" | "users" | "roles" | "bonus" | "recipes" | "items" | "logs" | "settings">("summary");
   const [realtimeNotice, setRealtimeNotice] = useState<string | null>(null);
 
   // 幹部ページの Supabase Realtime サブスクリプション
@@ -177,9 +177,10 @@ export default function ExecutivePage() {
   const [selectedWeekKey, setSelectedWeekKey] = useState<string>(
     availableWeeks[0]?.weekKey || ""
   );
-  const [weeklyBonusInputs, setWeeklyBonusInputs] = useState<{ [userId: string]: number }>({});
-  const [weeklyBonusNotes, setWeeklyBonusNotes] = useState<{ [userId: string]: string }>({});
-  const [staffIngredientInputs, setStaffIngredientInputs] = useState<{ [userId: string]: number }>({});
+  // 週ごとの入力値を安全に管理するためのキー `${weekKey}_${userId}`
+  const [weeklyBonusInputs, setWeeklyBonusInputs] = useState<{ [compositeKey: string]: number }>({});
+  const [weeklyBonusNotes, setWeeklyBonusNotes] = useState<{ [compositeKey: string]: string }>({});
+  const [staffIngredientInputs, setStaffIngredientInputs] = useState<{ [compositeKey: string]: number }>({});
   const [storeRemainingBonusRate, setStoreRemainingBonusRate] = useState<number>(() => storeSettings.storeRemainingBonusRate ?? 10); // 店舗手元純残りからのボーナス還元率 10%
   const [craftRewardRate, setCraftRewardRate] = useState<number>(() => storeSettings.craftRewardRate ?? 100);                 // クラフト仕込み手当 100円/個
   const [ingredientRewardRate, setIngredientRewardRate] = useState<number>(() => storeSettings.ingredientRewardRate ?? 50);   // 素材調達手当 50円/個
@@ -515,19 +516,22 @@ export default function ExecutivePage() {
   // 選択中の週サマリーを取得（日曜始まり土曜締め）
   const currentWeeklySummary = getWeeklySummary(selectedWeekKey);
 
-  // スタッフ別入力値ヘルパー
+  // スタッフ別入力値ヘルパー（週ごとの複合キーで管理）
   const getStaffBonusInput = (userId: string, currentAmount: number) => {
-    return weeklyBonusInputs[userId] !== undefined ? weeklyBonusInputs[userId] : currentAmount;
+    const key = `${selectedWeekKey}_${userId}`;
+    return weeklyBonusInputs[key] !== undefined ? weeklyBonusInputs[key] : currentAmount;
   };
 
   const getStaffBonusNote = (userId: string, currentNote?: string) => {
-    return weeklyBonusNotes[userId] !== undefined ? weeklyBonusNotes[userId] : (currentNote || "");
+    const key = `${selectedWeekKey}_${userId}`;
+    return weeklyBonusNotes[key] !== undefined ? weeklyBonusNotes[key] : (currentNote || "");
   };
 
   // 各スタッフの素材調達数ヘルパー（手動入力または自動集計値）
   const getStaffIngredientCount = (stat: StaffWeeklyStat) => {
-    return staffIngredientInputs[stat.userId] !== undefined
-      ? staffIngredientInputs[stat.userId]
+    const key = `${selectedWeekKey}_${stat.userId}`;
+    return staffIngredientInputs[key] !== undefined
+      ? staffIngredientInputs[key]
       : (stat.ingredientItemsCount || 0);
   };
 
@@ -571,27 +575,29 @@ export default function ExecutivePage() {
     const rec = calculateRecommendedWeeklyBonus(stat);
     const allowance = getStaffRoleAllowance(stat);
     const ingCount = getStaffIngredientCount(stat);
-    setWeeklyBonusInputs((prev) => ({ ...prev, [stat.userId]: rec }));
+    const key = `${selectedWeekKey}_${stat.userId}`;
+    setWeeklyBonusInputs((prev) => ({ ...prev, [key]: rec }));
     const ingText = storeSettings.enableInventory && ingCount > 0 ? `+素材手当(¥${ingredientRewardRate}×${ingCount}個)` : "";
     const craftText = storeSettings.enableCrafting && stat.craftItemsCount > 0 ? `+仕込手当(¥${craftRewardRate}×${stat.craftItemsCount}個)` : "";
     setWeeklyBonusNotes((prev) => ({
       ...prev,
-      [stat.userId]: `店舗残り${storeRate}%歩合${storeRemainingBonusRate}%${craftText}${ingText}+${stat.roleName || "役職"}手当(¥${allowance.toLocaleString()})`,
+      [key]: `店舗残り${storeRate}%歩合${storeRemainingBonusRate}%${craftText}${ingText}+${stat.roleName || "役職"}手当(¥${allowance.toLocaleString()})`,
     }));
   };
 
   // 全スタッフに推奨額を一括反映
   const handleApplyAllRecommended = () => {
-    const newInputs: { [id: string]: number } = {};
-    const newNotes: { [id: string]: string } = {};
+    const newInputs: { [key: string]: number } = {};
+    const newNotes: { [key: string]: string } = {};
     currentWeeklySummary.staffStats.forEach((stat) => {
       const rec = calculateRecommendedWeeklyBonus(stat);
       const allowance = getStaffRoleAllowance(stat);
       const ingCount = getStaffIngredientCount(stat);
-      newInputs[stat.userId] = rec;
+      const key = `${selectedWeekKey}_${stat.userId}`;
+      newInputs[key] = rec;
       const ingText = storeSettings.enableInventory && ingCount > 0 ? `+素材手当(¥${ingredientRewardRate}×${ingCount}個)` : "";
       const craftText = storeSettings.enableCrafting && stat.craftItemsCount > 0 ? `+仕込手当(¥${craftRewardRate}×${stat.craftItemsCount}個)` : "";
-      newNotes[stat.userId] = `店舗残り${storeRate}%歩合${storeRemainingBonusRate}%${craftText}${ingText}+${stat.roleName || "役職"}手当(¥${allowance.toLocaleString()})`;
+      newNotes[key] = `店舗残り${storeRate}%歩合${storeRemainingBonusRate}%${craftText}${ingText}+${stat.roleName || "役職"}手当(¥${allowance.toLocaleString()})`;
     });
     setWeeklyBonusInputs((prev) => ({ ...prev, ...newInputs }));
     setWeeklyBonusNotes((prev) => ({ ...prev, ...newNotes }));
@@ -600,22 +606,31 @@ export default function ExecutivePage() {
 
   // ボーナス査定のやり直し・リセット（全スタッフ推奨額で初期化）
   const handleResetAndReapplyAllBonuses = () => {
-    if (!confirm(`【${currentWeeklySummary.weekLabel}】の全スタッフのボーナス入力をやり直しますか？\n入力欄をすべてクリアし、最新の査定ルール（手元純残り${storeRate}%からの歩合、クラフト、素材調達、役職手当）に基づく推奨額にリセットします。`)) {
+    if (!confirm(`【${currentWeeklySummary.weekLabel}】の全スタッフのボーナス入力をやり直しますか？\n入力欄をすべてクリアし、最新の査定ルールに基づく推奨額にリセットします。`)) {
       return;
     }
-    const newInputs: { [id: string]: number } = {};
-    const newNotes: { [id: string]: string } = {};
+    const newInputs: { [key: string]: number } = {};
+    const newNotes: { [key: string]: string } = {};
     currentWeeklySummary.staffStats.forEach((stat) => {
       const rec = calculateRecommendedWeeklyBonus(stat);
       const allowance = getStaffRoleAllowance(stat);
       const ingCount = getStaffIngredientCount(stat);
-      newInputs[stat.userId] = rec;
+      const key = `${selectedWeekKey}_${stat.userId}`;
+      newInputs[key] = rec;
       const ingText = storeSettings.enableInventory && ingCount > 0 ? `+素材手当(¥${ingredientRewardRate}×${ingCount}個)` : "";
       const craftText = storeSettings.enableCrafting && stat.craftItemsCount > 0 ? `+仕込手当(¥${craftRewardRate}×${stat.craftItemsCount}個)` : "";
-      newNotes[stat.userId] = `店舗残り${storeRate}%歩合${storeRemainingBonusRate}%${craftText}${ingText}+${stat.roleName || "役職"}手当(¥${allowance.toLocaleString()})`;
+      newNotes[key] = `店舗残り${storeRate}%歩合${storeRemainingBonusRate}%${craftText}${ingText}+${stat.roleName || "役職"}手当(¥${allowance.toLocaleString()})`;
     });
-    setWeeklyBonusInputs(newInputs);
-    setWeeklyBonusNotes(newNotes);
+    setWeeklyBonusInputs((prev) => {
+      const copy = { ...prev };
+      currentWeeklySummary.staffStats.forEach((s) => delete copy[`${selectedWeekKey}_${s.userId}`]);
+      return { ...copy, ...newInputs };
+    });
+    setWeeklyBonusNotes((prev) => {
+      const copy = { ...prev };
+      currentWeeklySummary.staffStats.forEach((s) => delete copy[`${selectedWeekKey}_${s.userId}`]);
+      return { ...copy, ...newNotes };
+    });
     alert(`【${currentWeeklySummary.weekLabel}】のボーナス額を推奨計算でリセット・やり直しました！確認の上「全員分を一括保存」してください。`);
   };
 
@@ -856,6 +871,18 @@ export default function ExecutivePage() {
       {/* 幹部タブラベル */}
       <div className="flex flex-wrap gap-2 border-b border-stone-800 pb-3">
         <button
+          onClick={() => setActiveTab("summary")}
+          className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 cursor-pointer ${
+            activeTab === "summary"
+              ? "bg-amber-600 text-stone-950 shadow-md font-black scale-[1.02]"
+              : "bg-stone-900/90 text-stone-300 hover:bg-stone-800 hover:text-white border border-stone-800"
+          }`}
+        >
+          <TrendingUp className="w-4 h-4 text-amber-500" />
+          📊 店舗運営サマリー
+        </button>
+
+        <button
           onClick={() => setActiveTab("users")}
           className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 cursor-pointer ${
             activeTab === "users"
@@ -939,6 +966,477 @@ export default function ExecutivePage() {
           ⚙️ 店舗・機能利用設定
         </button>
       </div>
+
+      {/* ========================================================
+          タブ0: 📊 店舗運営サマリー（経営ダッシュボード）
+      ======================================================== */}
+      {activeTab === "summary" && (() => {
+        // 店舗別売上の集計（WeeklySummary に集計済み）
+        const sakuraTotal = currentWeeklySummary.sakura.salesAmount;
+        const buonTotal = currentWeeklySummary.buonViaggio.salesAmount;
+        const sakuraItems = currentWeeklySummary.sakura.itemsSold;
+        const buonItems = currentWeeklySummary.buonViaggio.itemsSold;
+
+        // 総素材調達数
+        const summaryTotalIngredients = currentWeeklySummary.staffStats.reduce(
+          (acc, s) => acc + getStaffIngredientCount(s),
+          0
+        );
+
+        // 各種ランキング Top5
+        const topSalesStaff = [...currentWeeklySummary.staffStats]
+          .filter((s) => s.salesAmount > 0)
+          .sort((a, b) => b.salesAmount - a.salesAmount)
+          .slice(0, 5);
+        const maxSales = topSalesStaff[0]?.salesAmount || 1;
+
+        const topCraftStaff = [...currentWeeklySummary.staffStats]
+          .filter((s) => s.craftItemsCount > 0)
+          .sort((a, b) => b.craftItemsCount - a.craftItemsCount)
+          .slice(0, 5);
+        const maxCraft = topCraftStaff[0]?.craftItemsCount || 1;
+
+        const topIngredientStaff = [...currentWeeklySummary.staffStats]
+          .map((s) => ({ ...s, count: getStaffIngredientCount(s) }))
+          .filter((s) => s.count > 0)
+          .sort((a, b) => b.count - a.count)
+          .slice(0, 5);
+        const maxIngredient = topIngredientStaff[0]?.count || 1;
+
+        // 順位バッジヘルパー
+        const getRankBadge = (idx: number) => {
+          if (idx === 0) return <span className="w-6 h-6 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/40 text-xs font-black flex items-center justify-center">🥇</span>;
+          if (idx === 1) return <span className="w-6 h-6 rounded-full bg-stone-300/20 text-stone-200 border border-stone-400/40 text-xs font-black flex items-center justify-center">🥈</span>;
+          if (idx === 2) return <span className="w-6 h-6 rounded-full bg-amber-700/20 text-amber-600 border border-amber-700/40 text-xs font-black flex items-center justify-center">🥉</span>;
+          return <span className="w-6 h-6 rounded-full bg-stone-800 text-stone-400 border border-stone-700 text-xs font-bold flex items-center justify-center">{idx + 1}</span>;
+        };
+
+        return (
+          <div className="space-y-6">
+            {/* ヘッダー & 対象期間選択 */}
+            <div className="bg-stone-900/90 p-5 rounded-3xl border border-stone-800 shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="px-2.5 py-1 rounded-full text-xs font-black bg-amber-500/10 text-amber-400 border border-amber-500/30">
+                    EXECUTIVE DASHBOARD
+                  </span>
+                  <span className="text-xs text-stone-400">リアルタイム経営集計</span>
+                </div>
+                <h2 className="text-lg font-black text-white mt-1 flex items-center gap-2">
+                  <TrendingUp className="w-5 h-5 text-amber-500" />
+                  店舗運営サマリー
+                </h2>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex items-center gap-2 bg-stone-950/80 px-3.5 py-2 rounded-2xl border border-stone-800">
+                  <Calendar className="w-4 h-4 text-amber-500 shrink-0" />
+                  <span className="text-xs text-stone-400 font-bold">集計期間:</span>
+                  <select
+                    value={selectedWeekKey}
+                    onChange={(e) => setSelectedWeekKey(e.target.value)}
+                    className="bg-stone-900 text-stone-100 text-xs font-black rounded-lg px-2.5 py-1 border border-stone-700 focus:outline-none focus:border-amber-500 cursor-pointer"
+                  >
+                    {availableWeeks.map((w, idx) => (
+                      <option key={w.weekKey} value={w.weekKey}>
+                        {idx === 0 ? "今週 (集計中): " : ""}{w.weekLabel}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <button
+                  onClick={handleOpenVaultModal}
+                  className="px-4 py-2 bg-stone-800 hover:bg-stone-700 text-stone-200 hover:text-white rounded-2xl text-xs font-bold border border-stone-700 transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
+                >
+                  <Landmark className="w-3.5 h-3.5 text-emerald-400" />
+                  金庫残高を同期・調整
+                </button>
+              </div>
+            </div>
+
+            {/* 4大重要指標カード */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {/* 1. 金庫残高 */}
+              <div className="bg-stone-900/90 p-5 rounded-3xl border border-emerald-900/40 shadow-xl relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/5 rounded-full blur-2xl pointer-events-none" />
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-bold text-stone-400 flex items-center gap-1.5">
+                    <Landmark className="w-4 h-4 text-emerald-400" />
+                    金庫保管残高
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-950/60 text-emerald-400 border border-emerald-800/50">
+                    POOL
+                  </span>
+                </div>
+                <div className="text-2xl font-black text-emerald-300 tracking-tight">
+                  {formatCurrency(vaultBalance)}
+                </div>
+                <div className="text-[11px] text-stone-500 mt-2">
+                  店舗手元純残り累積・ボーナス原資
+                </div>
+              </div>
+
+              {/* 2. 週次総売上高 */}
+              <div className="bg-stone-900/90 p-5 rounded-3xl border border-amber-900/40 shadow-xl relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-24 h-24 bg-amber-500/5 rounded-full blur-2xl pointer-events-none" />
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-bold text-stone-400 flex items-center gap-1.5">
+                    <TrendingUp className="w-4 h-4 text-amber-500" />
+                    期間総売上高
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-950/60 text-amber-400 border border-amber-800/50">
+                    TOTAL
+                  </span>
+                </div>
+                <div className="text-2xl font-black text-white tracking-tight">
+                  {formatCurrency(currentWeeklySummary.totalSales)}
+                </div>
+                <div className="text-[11px] text-stone-400 mt-2 flex items-center justify-between">
+                  <span>純残({storeRate}%): <span className="font-bold text-amber-400">{formatCurrency(currentWeeklySummary.totalStoreRemaining70)}</span></span>
+                  <span>手渡し済: <span className="font-bold text-stone-300">{formatCurrency(currentWeeklySummary.totalIncentive30)}</span></span>
+                </div>
+              </div>
+
+              {/* 3. 厨房仕込み数 */}
+              <div className="bg-stone-900/90 p-5 rounded-3xl border border-stone-800 shadow-xl relative overflow-hidden">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-bold text-stone-400 flex items-center gap-1.5">
+                    <Utensils className="w-4 h-4 text-amber-500" />
+                    料理仕込み総数
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-stone-800 text-stone-300 border border-stone-700">
+                    CRAFT
+                  </span>
+                </div>
+                <div className="text-2xl font-black text-amber-400 tracking-tight">
+                  {currentWeeklySummary.totalCraftItems.toLocaleString()} <span className="text-sm font-bold text-stone-400">個</span>
+                </div>
+                <div className="text-[11px] text-stone-500 mt-2">
+                  仕込み手当目安: ¥{(currentWeeklySummary.totalCraftItems * craftRewardRate).toLocaleString()}
+                </div>
+              </div>
+
+              {/* 4. 素材調達数 */}
+              <div className="bg-stone-900/90 p-5 rounded-3xl border border-stone-800 shadow-xl relative overflow-hidden">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-bold text-stone-400 flex items-center gap-1.5">
+                    <Boxes className="w-4 h-4 text-amber-500" />
+                    素材調達総数
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-stone-800 text-stone-300 border border-stone-700">
+                    ITEMS
+                  </span>
+                </div>
+                <div className="text-2xl font-black text-amber-300 tracking-tight">
+                  {summaryTotalIngredients.toLocaleString()} <span className="text-sm font-bold text-stone-400">個</span>
+                </div>
+                <div className="text-[11px] text-stone-500 mt-2">
+                  調達手当目安: ¥{(summaryTotalIngredients * ingredientRewardRate).toLocaleString()}
+                </div>
+              </div>
+            </div>
+
+            {/* 店舗別実績比較 */}
+            <div className="bg-stone-900/90 p-5 rounded-3xl border border-stone-800 shadow-xl">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm font-black text-white flex items-center gap-2">
+                  <Store className="w-4 h-4 text-amber-500" />
+                  店舗別 売上 & 純残り内訳
+                </h3>
+                <span className="text-[11px] text-stone-500">
+                  店舗手元純残り: {storeRate}% / スタッフ手渡し: {staffIncentiveRate}%
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* 和食さくら */}
+                <div className="bg-stone-950/70 p-4 rounded-2xl border border-stone-800/80">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <span className="text-base">🌸</span>
+                      <div>
+                        <span className="font-black text-stone-100 text-sm">和食さくら</span>
+                        <span className="text-[11px] text-stone-500 ml-2">販売 {sakuraItems} 個</span>
+                      </div>
+                    </div>
+                    <span className="text-base font-black text-amber-400">
+                      {formatCurrency(sakuraTotal)}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-xs pt-2 border-t border-stone-800">
+                    <div className="bg-stone-900/80 p-2 rounded-xl">
+                      <div className="text-[10px] text-stone-400">店舗手元純残り ({storeRate}%)</div>
+                      <div className="font-bold text-white mt-0.5">
+                        {formatCurrency(Math.round(sakuraTotal * (storeRate / 100)))}
+                      </div>
+                    </div>
+                    <div className="bg-stone-900/80 p-2 rounded-xl">
+                      <div className="text-[10px] text-stone-400">スタッフ手渡し済 ({staffIncentiveRate}%)</div>
+                      <div className="font-bold text-stone-300 mt-0.5">
+                        {formatCurrency(Math.round(sakuraTotal * (staffIncentiveRate / 100)))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Buon viaggio */}
+                <div className="bg-stone-950/70 p-4 rounded-2xl border border-stone-800/80">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <span className="text-base">🍷</span>
+                      <div>
+                        <span className="font-black text-stone-100 text-sm">Buon viaggio</span>
+                        <span className="text-[11px] text-stone-500 ml-2">販売 {buonItems} 個</span>
+                      </div>
+                    </div>
+                    <span className="text-base font-black text-amber-400">
+                      {formatCurrency(buonTotal)}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-xs pt-2 border-t border-stone-800">
+                    <div className="bg-stone-900/80 p-2 rounded-xl">
+                      <div className="text-[10px] text-stone-400">店舗手元純残り ({storeRate}%)</div>
+                      <div className="font-bold text-white mt-0.5">
+                        {formatCurrency(Math.round(buonTotal * (storeRate / 100)))}
+                      </div>
+                    </div>
+                    <div className="bg-stone-900/80 p-2 rounded-xl">
+                      <div className="text-[10px] text-stone-400">スタッフ手渡し済 ({staffIncentiveRate}%)</div>
+                      <div className="font-bold text-stone-300 mt-0.5">
+                        {formatCurrency(Math.round(buonTotal * (staffIncentiveRate / 100)))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* 3大ランキング Top5 */}
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-black text-white flex items-center gap-2">
+                  <Award className="w-4 h-4 text-amber-500" />
+                  従業員 貢献度ランキング Top 5
+                </h3>
+                <button
+                  onClick={() => setActiveTab("bonus")}
+                  className="text-xs text-amber-400 hover:text-amber-300 font-bold flex items-center gap-1 cursor-pointer"
+                >
+                  ボーナス査定で全員を見る
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {/* 1. 売上貢献ランキング */}
+                <div className="bg-stone-900/90 p-5 rounded-3xl border border-stone-800 shadow-xl flex flex-col justify-between">
+                  <div>
+                    <div className="flex items-center justify-between pb-3 border-b border-stone-800 mb-3">
+                      <span className="text-xs font-black text-white flex items-center gap-1.5">
+                        <TrendingUp className="w-4 h-4 text-amber-500" />
+                        売上貢献 Top 5
+                      </span>
+                      <span className="text-[10px] text-stone-400 font-bold">個人売上高</span>
+                    </div>
+
+                    {topSalesStaff.length === 0 ? (
+                      <div className="py-8 text-center text-xs text-stone-500">
+                        該当期間の売上記録がまだありません
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {topSalesStaff.map((stat, idx) => {
+                          const pct = Math.min(100, Math.round((stat.salesAmount / maxSales) * 100));
+                          return (
+                            <div key={stat.userId} className="space-y-1">
+                              <div className="flex items-center justify-between text-xs">
+                                <div className="flex items-center gap-2 min-w-0">
+                                  {getRankBadge(idx)}
+                                  <span className="font-bold text-stone-200 truncate">
+                                    {stat.displayName || stat.username}
+                                  </span>
+                                  <span className="text-[10px] px-1.5 py-0.2 rounded bg-stone-800 text-stone-400 shrink-0">
+                                    {stat.roleName}
+                                  </span>
+                                </div>
+                                <span className="font-black text-amber-400 shrink-0 ml-2">
+                                  {formatCurrency(stat.salesAmount)}
+                                </span>
+                              </div>
+                              <div className="w-full bg-stone-800 h-1.5 rounded-full overflow-hidden">
+                                <div
+                                  className="bg-amber-500 h-full rounded-full transition-all duration-500"
+                                  style={{ width: `${pct}%` }}
+                                />
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* 2. 仕込み職人ランキング */}
+                <div className="bg-stone-900/90 p-5 rounded-3xl border border-stone-800 shadow-xl flex flex-col justify-between">
+                  <div>
+                    <div className="flex items-center justify-between pb-3 border-b border-stone-800 mb-3">
+                      <span className="text-xs font-black text-white flex items-center gap-1.5">
+                        <Utensils className="w-4 h-4 text-amber-500" />
+                        仕込み職人 Top 5
+                      </span>
+                      <span className="text-[10px] text-stone-400 font-bold">料理クラフト数</span>
+                    </div>
+
+                    {topCraftStaff.length === 0 ? (
+                      <div className="py-8 text-center text-xs text-stone-500">
+                        該当期間の仕込み記録がまだありません
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {topCraftStaff.map((stat, idx) => {
+                          const pct = Math.min(100, Math.round((stat.craftItemsCount / maxCraft) * 100));
+                          return (
+                            <div key={stat.userId} className="space-y-1">
+                              <div className="flex items-center justify-between text-xs">
+                                <div className="flex items-center gap-2 min-w-0">
+                                  {getRankBadge(idx)}
+                                  <span className="font-bold text-stone-200 truncate">
+                                    {stat.displayName || stat.username}
+                                  </span>
+                                  <span className="text-[10px] px-1.5 py-0.2 rounded bg-stone-800 text-stone-400 shrink-0">
+                                    {stat.roleName}
+                                  </span>
+                                </div>
+                                <span className="font-black text-amber-400 shrink-0 ml-2">
+                                  {stat.craftItemsCount.toLocaleString()} <span className="text-[10px] font-normal text-stone-400">個</span>
+                                </span>
+                              </div>
+                              <div className="w-full bg-stone-800 h-1.5 rounded-full overflow-hidden">
+                                <div
+                                  className="bg-amber-500 h-full rounded-full transition-all duration-500"
+                                  style={{ width: `${pct}%` }}
+                                />
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* 3. 素材調達ランキング */}
+                <div className="bg-stone-900/90 p-5 rounded-3xl border border-stone-800 shadow-xl flex flex-col justify-between">
+                  <div>
+                    <div className="flex items-center justify-between pb-3 border-b border-stone-800 mb-3">
+                      <span className="text-xs font-black text-white flex items-center gap-1.5">
+                        <Boxes className="w-4 h-4 text-amber-500" />
+                        素材調達 Top 5
+                      </span>
+                      <span className="text-[10px] text-stone-400 font-bold">素材調達・納品数</span>
+                    </div>
+
+                    {topIngredientStaff.length === 0 ? (
+                      <div className="py-8 text-center text-xs text-stone-500">
+                        該当期間の素材調達記録がまだありません
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {topIngredientStaff.map((stat, idx) => {
+                          const pct = Math.min(100, Math.round((stat.count / maxIngredient) * 100));
+                          return (
+                            <div key={stat.userId} className="space-y-1">
+                              <div className="flex items-center justify-between text-xs">
+                                <div className="flex items-center gap-2 min-w-0">
+                                  {getRankBadge(idx)}
+                                  <span className="font-bold text-stone-200 truncate">
+                                    {stat.displayName || stat.username}
+                                  </span>
+                                  <span className="text-[10px] px-1.5 py-0.2 rounded bg-stone-800 text-stone-400 shrink-0">
+                                    {stat.roleName}
+                                  </span>
+                                </div>
+                                <span className="font-black text-amber-400 shrink-0 ml-2">
+                                  {stat.count.toLocaleString()} <span className="text-[10px] font-normal text-stone-400">個</span>
+                                </span>
+                              </div>
+                              <div className="w-full bg-stone-800 h-1.5 rounded-full overflow-hidden">
+                                <div
+                                  className="bg-amber-500 h-full rounded-full transition-all duration-500"
+                                  style={{ width: `${pct}%` }}
+                                />
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* クイックアクセスリンク */}
+            <div className="bg-stone-900/90 p-5 rounded-3xl border border-stone-800 shadow-xl">
+              <h3 className="text-xs font-bold text-stone-400 mb-3 flex items-center gap-2">
+                <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                幹部管理メニュー・クイックアクセス
+              </h3>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <button
+                  onClick={() => setActiveTab("bonus")}
+                  className="p-3.5 bg-stone-950/60 hover:bg-stone-800 border border-stone-800 rounded-2xl text-left transition-all group cursor-pointer"
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <Coins className="w-4 h-4 text-amber-500 group-hover:scale-110 transition-transform" />
+                    <ArrowRight className="w-3.5 h-3.5 text-stone-600 group-hover:text-amber-400" />
+                  </div>
+                  <div className="text-xs font-black text-stone-200 group-hover:text-white">ボーナス査定</div>
+                  <div className="text-[10px] text-stone-500 mt-0.5">週次ボーナス決定・支払い</div>
+                </button>
+
+                <button
+                  onClick={() => setActiveTab("users")}
+                  className="p-3.5 bg-stone-950/60 hover:bg-stone-800 border border-stone-800 rounded-2xl text-left transition-all group cursor-pointer"
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <Users className="w-4 h-4 text-amber-500 group-hover:scale-110 transition-transform" />
+                    <ArrowRight className="w-3.5 h-3.5 text-stone-600 group-hover:text-amber-400" />
+                  </div>
+                  <div className="text-xs font-black text-stone-200 group-hover:text-white">従業員 & PASS</div>
+                  <div className="text-[10px] text-stone-500 mt-0.5">スタッフ追加・並び順設定</div>
+                </button>
+
+                <button
+                  onClick={() => setActiveTab("settings")}
+                  className="p-3.5 bg-stone-950/60 hover:bg-stone-800 border border-stone-800 rounded-2xl text-left transition-all group cursor-pointer"
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <Sliders className="w-4 h-4 text-amber-500 group-hover:scale-110 transition-transform" />
+                    <ArrowRight className="w-3.5 h-3.5 text-stone-600 group-hover:text-amber-400" />
+                  </div>
+                  <div className="text-xs font-black text-stone-200 group-hover:text-white">店舗設定</div>
+                  <div className="text-[10px] text-stone-500 mt-0.5">純残り割合・機能ON/OFF</div>
+                </button>
+
+                <button
+                  onClick={() => setActiveTab("recipes")}
+                  className="p-3.5 bg-stone-950/60 hover:bg-stone-800 border border-stone-800 rounded-2xl text-left transition-all group cursor-pointer"
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <Utensils className="w-4 h-4 text-amber-500 group-hover:scale-110 transition-transform" />
+                    <ArrowRight className="w-3.5 h-3.5 text-stone-600 group-hover:text-amber-400" />
+                  </div>
+                  <div className="text-xs font-black text-stone-200 group-hover:text-white">レシピ設定</div>
+                  <div className="text-[10px] text-stone-500 mt-0.5">料理と必要素材の紐付け</div>
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ========================================================
           タブ1: 👥 従業員 & PASS管理
@@ -1671,117 +2169,116 @@ export default function ExecutivePage() {
             </button>
           </div>
 
-          {/* ① 週選択バー & 確定ステータス（全サブタブ共通で上部に配置） */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-stone-900 text-white p-4 sm:p-5 rounded-3xl shadow-md border border-stone-800">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center justify-center font-black shrink-0">
-                <Calendar className="w-5 h-5 sm:w-6 sm:h-6" />
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="text-[11px] font-bold text-stone-400 block">
-                    集計対象週（日曜00:00 〜 土曜23:59 締め）
-                  </span>
-                  {currentWeeklySummary.isFinalized ? (
-                    <span className="inline-flex items-center gap-1 text-[10px] font-black px-2.5 py-0.5 rounded-full bg-emerald-950/80 text-emerald-300 border border-emerald-500/50">
-                      <CheckCheck className="w-3 h-3" />
-                      確定済み
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1 text-[10px] font-black px-2.5 py-0.5 rounded-full bg-amber-950/80 text-amber-300 border border-amber-500/50">
-                      <FileText className="w-3 h-3" />
-                      未確定（査定中）
-                    </span>
-                  )}
-                </div>
-
-                <div className="flex items-center gap-2 mt-1 flex-wrap">
-                  {/* 今週 / 先週 クイック切替ボタン */}
-                  <div className="flex items-center bg-stone-950 rounded-xl p-0.5 border border-stone-800">
-                    <button
-                      type="button"
-                      onClick={() => setSelectedWeekKey(availableWeeks[0]?.weekKey)}
-                      className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                        selectedWeekKey === availableWeeks[0]?.weekKey
-                          ? "bg-amber-600 text-stone-950 font-black shadow-xs"
-                          : "text-stone-400 hover:text-white"
-                      }`}
-                    >
-                      🔥 今週 (集計中)
-                    </button>
-                    {availableWeeks[1] && (
-                      <button
-                        type="button"
-                        onClick={() => setSelectedWeekKey(availableWeeks[1]?.weekKey)}
-                        className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                          selectedWeekKey === availableWeeks[1]?.weekKey
-                            ? "bg-amber-600 text-stone-950 font-black shadow-xs"
-                            : "text-stone-400 hover:text-white"
-                        }`}
-                      >
-                        📋 先週 (締め済)
-                      </button>
-                    )}
-                  </div>
-
-                  <select
-                    value={selectedWeekKey}
-                    onChange={(e) => setSelectedWeekKey(e.target.value)}
-                    className="bg-stone-800 hover:bg-stone-750 text-white text-xs font-bold px-3 py-1.5 rounded-xl border border-stone-700 focus:ring-2 focus:ring-amber-500 cursor-pointer"
-                  >
-                    {availableWeeks.map((w, idx) => (
-                      <option key={w.weekKey} value={w.weekKey}>
-                        {w.weekLabel} {idx === 0 ? "（今週・集計中）" : idx === 1 ? "（先週・締め済）" : ""}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-            </div>
-
-            {/* 確定アクションボタン */}
-            <div className="flex items-center gap-2 self-start sm:self-auto">
-              {currentWeeklySummary.isFinalized ? (
-                <div className="flex items-center gap-3">
-                  <div className="text-right text-[11px] text-stone-300 hidden md:block">
-                    <div>確定者: <strong className="text-white">{currentWeeklySummary.finalizedBy}</strong></div>
-                    <div className="text-[10px] text-stone-400">
-                      {currentWeeklySummary.finalizedAt &&
-                        new Date(currentWeeklySummary.finalizedAt).toLocaleString("ja-JP", {
-                          month: "numeric",
-                          day: "numeric",
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleUnfinalizeWeek}
-                    className="px-3.5 py-2 rounded-xl bg-stone-800 hover:bg-stone-750 text-stone-300 hover:text-white text-xs font-bold border border-stone-700 flex items-center gap-1.5 transition-colors cursor-pointer"
-                  >
-                    <RefreshCw className="w-3.5 h-3.5" />
-                    確定を解除して再編集
-                  </button>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={handleFinalizeWeek}
-                  className="px-5 py-2.5 rounded-2xl bg-amber-600 hover:bg-amber-500 text-stone-950 text-xs font-black shadow-md flex items-center gap-2 transition-all hover:scale-[1.02] cursor-pointer"
-                >
-                  <CheckCircle2 className="w-4 h-4" />
-                  この週のボーナスを最終確定する
-                </button>
-              )}
-            </div>
-          </div>
-
           {/* ========================================================
               サブタブ 1: 📋 スタッフ別査定・決定 (assessment)
           ======================================================== */}
           {bonusSubTab === "assessment" && (
             <div className="space-y-4">
+              {/* ① 週選択バー & 確定ステータス（査定・決定タブのみに表示） */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-stone-900 text-white p-4 sm:p-5 rounded-3xl shadow-md border border-stone-800">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center justify-center font-black shrink-0">
+                    <Calendar className="w-5 h-5 sm:w-6 sm:h-6" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] font-bold text-stone-400 block">
+                        集計対象週（日曜00:00 〜 土曜23:59 締め）
+                      </span>
+                      {currentWeeklySummary.isFinalized ? (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-black px-2.5 py-0.5 rounded-full bg-emerald-950/80 text-emerald-300 border border-emerald-500/50">
+                          <CheckCheck className="w-3 h-3" />
+                          確定済み
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-black px-2.5 py-0.5 rounded-full bg-amber-950/80 text-amber-300 border border-amber-500/50">
+                          <FileText className="w-3 h-3" />
+                          未確定（査定中）
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-2 mt-1 flex-wrap">
+                      {/* 今週 / 先週 クイック切替ボタン */}
+                      <div className="flex items-center bg-stone-950 rounded-xl p-0.5 border border-stone-800">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedWeekKey(availableWeeks[0]?.weekKey)}
+                          className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                            selectedWeekKey === availableWeeks[0]?.weekKey
+                              ? "bg-amber-600 text-stone-950 font-black shadow-xs"
+                              : "text-stone-400 hover:text-white"
+                          }`}
+                        >
+                          🔥 今週 (集計中)
+                        </button>
+                        {availableWeeks[1] && (
+                          <button
+                            type="button"
+                            onClick={() => setSelectedWeekKey(availableWeeks[1]?.weekKey)}
+                            className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                              selectedWeekKey === availableWeeks[1]?.weekKey
+                                ? "bg-amber-600 text-stone-950 font-black shadow-xs"
+                                : "text-stone-400 hover:text-white"
+                            }`}
+                          >
+                            📋 先週 (締め済)
+                          </button>
+                        )}
+                      </div>
+
+                      <select
+                        value={selectedWeekKey}
+                        onChange={(e) => setSelectedWeekKey(e.target.value)}
+                        className="bg-stone-800 hover:bg-stone-750 text-white text-xs font-bold px-3 py-1.5 rounded-xl border border-stone-700 focus:ring-2 focus:ring-amber-500 cursor-pointer"
+                      >
+                        {availableWeeks.map((w, idx) => (
+                          <option key={w.weekKey} value={w.weekKey}>
+                            {w.weekLabel} {idx === 0 ? "（今週・集計中）" : idx === 1 ? "（先週・締め済）" : ""}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 確定アクションボタン */}
+                <div className="flex items-center gap-2 self-start sm:self-auto">
+                  {currentWeeklySummary.isFinalized ? (
+                    <div className="flex items-center gap-3">
+                      <div className="text-right text-[11px] text-stone-300 hidden md:block">
+                        <div>確定者: <strong className="text-white">{currentWeeklySummary.finalizedBy}</strong></div>
+                        <div className="text-[10px] text-stone-400">
+                          {currentWeeklySummary.finalizedAt &&
+                            new Date(currentWeeklySummary.finalizedAt).toLocaleString("ja-JP", {
+                              month: "numeric",
+                              day: "numeric",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleUnfinalizeWeek}
+                        className="px-3.5 py-2 rounded-xl bg-stone-800 hover:bg-stone-750 text-stone-300 hover:text-white text-xs font-bold border border-stone-700 flex items-center gap-1.5 transition-colors cursor-pointer"
+                      >
+                        <RefreshCw className="w-3.5 h-3.5" />
+                        確定を解除して再編集
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={handleFinalizeWeek}
+                      className="px-5 py-2.5 rounded-2xl bg-amber-600 hover:bg-amber-500 text-stone-950 text-xs font-black shadow-md flex items-center gap-2 transition-all hover:scale-[1.02] cursor-pointer"
+                    >
+                      <CheckCircle2 className="w-4 h-4" />
+                      この週のボーナスを最終確定する
+                    </button>
+                  )}
+                </div>
+              </div>
               {/* クイック操作バー */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-stone-900 p-4 rounded-2xl border border-stone-800 shadow-md">
                 <div className="flex items-center gap-2">
@@ -1947,12 +2444,11 @@ export default function ExecutivePage() {
                                   min="0"
                                   step="1000"
                                   value={currentInput}
-                                  onChange={(e) =>
-                                    setWeeklyBonusInputs({
-                                      ...weeklyBonusInputs,
-                                      [stat.userId]: parseInt(e.target.value, 10) || 0,
-                                    })
-                                  }
+                                  onChange={(e) => {
+                                    const val = parseInt(e.target.value, 10) || 0;
+                                    const key = `${selectedWeekKey}_${stat.userId}`;
+                                    setWeeklyBonusInputs((prev) => ({ ...prev, [key]: val }));
+                                  }}
                                   className="w-full pl-6 pr-2 py-1 bg-stone-900 rounded-lg border border-stone-700 font-bold text-sm text-white focus:border-amber-500 focus:outline-none font-mono"
                                   placeholder="0"
                                 />
@@ -1997,12 +2493,10 @@ export default function ExecutivePage() {
                                 <input
                                   type="text"
                                   value={currentNote}
-                                  onChange={(e) =>
-                                    setWeeklyBonusNotes({
-                                      ...weeklyBonusNotes,
-                                      [stat.userId]: e.target.value,
-                                    })
-                                  }
+                                  onChange={(e) => {
+                                    const key = `${selectedWeekKey}_${stat.userId}`;
+                                    setWeeklyBonusNotes((prev) => ({ ...prev, [key]: e.target.value }));
+                                  }}
                                   placeholder="査定メモ..."
                                   className="w-full px-2 py-0.5 bg-stone-900 rounded border border-stone-700 text-xs text-stone-200 placeholder:text-stone-600 focus:border-amber-500 focus:outline-none"
                                 />
