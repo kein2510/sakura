@@ -103,7 +103,7 @@ export default function LoginForm() {
           <button
             type="submit"
             disabled={isLoading}
-            className="w-full py-3.5 rounded-xl bg-gradient-to-r from-rose-600 to-rose-500 hover:from-rose-500 hover:to-rose-600 active:scale-98 disabled:opacity-50 disabled:cursor-not-allowed font-bold text-sm text-white shadow-lg shadow-rose-900/30 transition-all duration-200 flex items-center justify-center gap-2 cursor-pointer mt-4"
+            className="w-full py-3.5 rounded-xl bg-rose-700 hover:bg-rose-600 active:scale-98 disabled:opacity-50 disabled:cursor-not-allowed font-bold text-sm text-white shadow-md shadow-rose-950/40 transition-all duration-200 flex items-center justify-center gap-2 cursor-pointer mt-4"
           >
             <span>{isLoading ? "認証中..." : "店舗システムにログイン"}</span>
             <ArrowRight className="w-4 h-4" />

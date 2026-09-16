@@ -307,7 +307,7 @@ export default function MainPage() {
                 type="button"
                 onClick={handleSell}
                 disabled={totalItemsCount === 0}
-                className="flex-1 md:flex-initial px-6 py-3.5 rounded-2xl bg-gradient-to-r from-rose-600 to-rose-500 hover:from-rose-500 hover:to-rose-600 disabled:opacity-40 disabled:cursor-not-allowed font-extrabold text-sm text-white shadow-lg shadow-rose-950/50 flex items-center justify-center gap-2 transition-all transform active:scale-95 cursor-pointer"
+                className="flex-1 md:flex-initial px-6 py-3.5 rounded-2xl bg-rose-700 hover:bg-rose-600 disabled:opacity-40 disabled:cursor-not-allowed font-extrabold text-sm text-white shadow-md shadow-rose-950/40 flex items-center justify-center gap-2 transition-all transform active:scale-95 cursor-pointer"
               >
                 <ShoppingBag className="w-5 h-5" />
                 <span>売る (在庫減算)</span>
@@ -319,7 +319,7 @@ export default function MainPage() {
                   type="button"
                   onClick={handleCraft}
                   disabled={totalItemsCount === 0}
-                  className="flex-1 md:flex-initial px-6 py-3.5 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 disabled:opacity-40 disabled:cursor-not-allowed font-extrabold text-sm text-white shadow-lg shadow-emerald-950/50 flex items-center justify-center gap-2 transition-all transform active:scale-95 cursor-pointer"
+                  className="flex-1 md:flex-initial px-6 py-3.5 rounded-2xl bg-emerald-700 hover:bg-emerald-600 disabled:opacity-40 disabled:cursor-not-allowed font-extrabold text-sm text-white shadow-md shadow-emerald-950/40 flex items-center justify-center gap-2 transition-all transform active:scale-95 cursor-pointer"
                 >
                   <Hammer className="w-5 h-5" />
                   <span>作成 (在庫増 ＆ 素材消費)</span>

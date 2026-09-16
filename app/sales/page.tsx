@@ -607,11 +607,11 @@ export default function SalesPage() {
                       <div
                         className={`w-7 h-7 rounded-xl flex items-center justify-center text-xs font-black shrink-0 shadow-sm ${
                           idx === 0
-                            ? "bg-gradient-to-br from-amber-400 to-amber-600 text-stone-950"
+                            ? "bg-amber-500 text-stone-950"
                             : idx === 1
-                            ? "bg-gradient-to-br from-stone-300 to-stone-400 text-stone-950"
+                            ? "bg-stone-300 text-stone-900"
                             : idx === 2
-                            ? "bg-gradient-to-br from-amber-700 to-amber-800 text-white"
+                            ? "bg-amber-700 text-white"
                             : "bg-stone-800 text-stone-400"
                         }`}
                       >
@@ -659,8 +659,8 @@ export default function SalesPage() {
                       <div
                         className={`h-full rounded-full transition-all duration-500 ${
                           idx === 0
-                            ? "bg-gradient-to-r from-amber-500 to-rose-500"
-                            : "bg-rose-600/80"
+                            ? "bg-amber-500"
+                            : "bg-rose-700"
                         }`}
                         style={{ width: `${ratio}%` }}
                       />
