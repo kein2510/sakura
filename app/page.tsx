@@ -270,12 +270,12 @@ export default function MainPage() {
             </span>
           </div>
 
-          {/* ② 合計金額 & 売る・作成アクションバー（完全不透明 bg-stone-900） */}
+          {/* ② 合計金額 & 売る・作成アクションバー（完全不透明 bg-stone-900・高さ固定） */}
           <div className="bg-stone-900 p-4 sm:p-5 rounded-2xl border border-stone-800 shadow-md space-y-3">
-            <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
               {/* 左側: ロゴ & 合計金額表示 */}
-              <div className="flex items-center gap-4 w-full md:w-auto justify-between md:justify-start">
-                <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 min-w-0 flex-wrap sm:flex-nowrap justify-between sm:justify-start">
+                <div className="flex items-center gap-3 min-w-0">
                   <div
                     className={`w-12 h-12 rounded-2xl border p-1 flex items-center justify-center shadow-lg shrink-0 overflow-hidden ${
                       selectedShopId === "sakura"
@@ -290,65 +290,48 @@ export default function MainPage() {
                       <span>🍷</span>
                     )}
                   </div>
-                  <div>
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className="text-[11px] font-bold text-stone-400 block">
-                        【{currentShopInfo.name}】選択中 ({totalItemsCount}点)
+
+                  <div className="min-w-0">
+                    <span className="text-[11px] font-bold text-stone-400 block truncate">
+                      【{currentShopInfo.name}】選択中 ({totalItemsCount}点)
+                    </span>
+
+                    <div className="flex items-baseline gap-2 whitespace-nowrap">
+                      <span className="text-xs font-bold text-stone-400">合計:</span>
+                      <span
+                        className={`text-2xl sm:text-3xl font-black tracking-tight ${
+                          selectedShopId === "sakura" ? "text-rose-400" : "text-emerald-400"
+                        }`}
+                      >
+                        {formatCurrency(finalTotalAmount)}
                       </span>
                       {validDiscount > 0 && (
-                        <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1">
-                          <Tag className="w-3 h-3 text-amber-400" />
-                          値引き -¥{validDiscount.toLocaleString()}
+                        <span className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
+                          <span>(-¥{validDiscount.toLocaleString()})</span>
+                          <span className="text-[11px] text-stone-500 line-through hidden md:inline">
+                            小計 {formatCurrency(subtotal)}
+                          </span>
                         </span>
-                      )}
-                    </div>
-
-                    <div className="flex items-baseline gap-2 flex-wrap">
-                      {validDiscount > 0 ? (
-                        <>
-                          <span className="text-xs text-stone-500 line-through font-bold">
-                            小計: {formatCurrency(subtotal)}
-                          </span>
-                          <span className="text-xs font-bold text-stone-400">お会計:</span>
-                          <span
-                            className={`text-2xl sm:text-3xl font-black tracking-tight ${
-                              selectedShopId === "sakura" ? "text-rose-400" : "text-emerald-400"
-                            }`}
-                          >
-                            {formatCurrency(finalTotalAmount)}
-                          </span>
-                        </>
-                      ) : (
-                        <>
-                          <span className="text-xs font-bold text-stone-400">合計:</span>
-                          <span
-                            className={`text-2xl sm:text-3xl font-black tracking-tight ${
-                              selectedShopId === "sakura" ? "text-rose-400" : "text-emerald-400"
-                            }`}
-                          >
-                            {formatCurrency(finalTotalAmount)}
-                          </span>
-                        </>
                       )}
                     </div>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-1.5 shrink-0">
                   {totalItemsCount > 0 && (
                     <button
                       type="button"
                       onClick={() => setShowDiscountForm(!showDiscountForm)}
-                      className={`flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg border transition-all cursor-pointer font-bold ${
+                      className={`h-9 px-3 rounded-xl border transition-all cursor-pointer font-bold text-xs flex items-center gap-1.5 whitespace-nowrap shrink-0 ${
                         validDiscount > 0
-                          ? "bg-amber-500/20 text-amber-300 border-amber-500/40 hover:bg-amber-500/30 shadow-sm"
+                          ? "bg-amber-500/20 text-amber-300 border-amber-500/50 shadow-xs"
                           : showDiscountForm
                           ? "bg-stone-700 text-white border-stone-600"
                           : "bg-stone-800 text-stone-300 hover:text-white border-stone-700 hover:bg-stone-700"
                       }`}
                     >
-                      <Tag className="w-3.5 h-3.5 text-amber-400" />
-                      <span>{validDiscount > 0 ? `値引き中 (-¥${validDiscount.toLocaleString()})` : "調整値引き"}</span>
+                      <Tag className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                      <span>{validDiscount > 0 ? "値引き中" : "調整値引き"}</span>
                     </button>
                   )}
 
@@ -356,30 +339,26 @@ export default function MainPage() {
                     <button
                       type="button"
                       onClick={handleResetAll}
-                      className="flex items-center gap-1 text-xs text-stone-400 hover:text-stone-200 px-2.5 py-1.5 rounded-lg bg-stone-800 border border-stone-700 transition-colors cursor-pointer"
+                      className="h-9 px-3 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-300 hover:text-white border border-stone-700 transition-colors cursor-pointer text-xs font-bold flex items-center gap-1 whitespace-nowrap shrink-0"
                     >
-                      <RotateCcw className="w-3.5 h-3.5" />
-                      クリア
+                      <RotateCcw className="w-3.5 h-3.5 shrink-0" />
+                      <span>クリア</span>
                     </button>
                   )}
                 </div>
               </div>
 
-              {/* 右側: 「売る」ボタン ＆ 「作成 (在庫増)」ボタン */}
-              <div className="flex items-center gap-3 w-full md:w-auto">
+              {/* 右側: 「売る」ボタン ＆ 「作成 (在庫増)」ボタン（改行防止・固定サイズ） */}
+              <div className="flex items-center gap-2.5 w-full lg:w-auto shrink-0">
                 {/* 売るボタン */}
                 <button
                   type="button"
                   onClick={handleSell}
                   disabled={totalItemsCount === 0}
-                  className="flex-1 md:flex-initial px-6 py-3.5 rounded-2xl bg-rose-700 hover:bg-rose-600 disabled:opacity-40 disabled:cursor-not-allowed font-extrabold text-sm text-white shadow-md shadow-rose-950/40 flex items-center justify-center gap-2 transition-all transform active:scale-95 cursor-pointer"
+                  className="flex-1 lg:flex-initial h-11 px-6 rounded-2xl bg-rose-700 hover:bg-rose-600 disabled:opacity-40 disabled:cursor-not-allowed font-extrabold text-sm text-white shadow-md shadow-rose-950/40 flex items-center justify-center gap-2 transition-all transform active:scale-95 cursor-pointer whitespace-nowrap shrink-0"
                 >
-                  <ShoppingBag className="w-5 h-5" />
-                  <span>
-                    {validDiscount > 0
-                      ? `売る (値引後 ¥${finalTotalAmount.toLocaleString()})`
-                      : "売る (在庫減算)"}
-                  </span>
+                  <ShoppingBag className="w-4 h-4 shrink-0" />
+                  <span>売る (在庫減算)</span>
                 </button>
 
                 {/* 作成ボタン (在庫を作った時のボタン - 機能有効時のみ表示) */}
@@ -388,10 +367,10 @@ export default function MainPage() {
                     type="button"
                     onClick={handleCraft}
                     disabled={totalItemsCount === 0}
-                    className="flex-1 md:flex-initial px-6 py-3.5 rounded-2xl bg-emerald-700 hover:bg-emerald-600 disabled:opacity-40 disabled:cursor-not-allowed font-extrabold text-sm text-white shadow-md shadow-emerald-950/40 flex items-center justify-center gap-2 transition-all transform active:scale-95 cursor-pointer"
+                    className="flex-1 lg:flex-initial h-11 px-5 rounded-2xl bg-emerald-700 hover:bg-emerald-600 disabled:opacity-40 disabled:cursor-not-allowed font-extrabold text-sm text-white shadow-md shadow-emerald-950/40 flex items-center justify-center gap-2 transition-all transform active:scale-95 cursor-pointer whitespace-nowrap shrink-0"
                   >
-                    <Hammer className="w-5 h-5" />
-                    <span>作成 (在庫増 ＆ 素材消費)</span>
+                    <Hammer className="w-4 h-4 shrink-0" />
+                    <span>作成 (在庫増)</span>
                   </button>
                 )}
               </div>
