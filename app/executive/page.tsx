@@ -47,6 +47,7 @@ import {
   Sliders,
   Hammer,
   Boxes,
+  RotateCcw,
 } from "lucide-react";
 import Link from "next/link";
 import { useApp } from "@/context/AppContext";
@@ -178,10 +179,12 @@ export default function ExecutivePage() {
   const [weeklyBonusInputs, setWeeklyBonusInputs] = useState<{ [userId: string]: number }>({});
   const [weeklyBonusNotes, setWeeklyBonusNotes] = useState<{ [userId: string]: string }>({});
   const [staffIngredientInputs, setStaffIngredientInputs] = useState<{ [userId: string]: number }>({});
-  const [storeRemainingBonusRate, setStoreRemainingBonusRate] = useState<number>(() => storeSettings.storeRemainingBonusRate ?? 10); // 店舗残り7割からのボーナス還元率 10%
+  const [storeRemainingBonusRate, setStoreRemainingBonusRate] = useState<number>(() => storeSettings.storeRemainingBonusRate ?? 10); // 店舗手元純残りからのボーナス還元率 10%
   const [craftRewardRate, setCraftRewardRate] = useState<number>(() => storeSettings.craftRewardRate ?? 100);                 // クラフト仕込み手当 100円/個
   const [ingredientRewardRate, setIngredientRewardRate] = useState<number>(() => storeSettings.ingredientRewardRate ?? 50);   // 素材調達手当 50円/個
   const [baseAllowance, setBaseAllowance] = useState<number>(5000);                   // 基本手当 5,000円
+  const storeRate = storeSettings.storeRemainingRate ?? 70;                           // 店舗手元純残りの割合 (%)
+  const staffIncentiveRate = 100 - storeRate;                                         // スタッフ手渡しインセンティブ割合 (%)
   const [employeeSortMode, setEmployeeSortMode] = useState<"custom" | "role" | "name" | "date">("custom");
   const [expandedSalesUserId, setExpandedSalesUserId] = useState<string | null>(null);
   const [saveSuccessMap, setSaveSuccessMap] = useState<{ [userId: string]: boolean }>({});
@@ -572,7 +575,7 @@ export default function ExecutivePage() {
     const craftText = storeSettings.enableCrafting && stat.craftItemsCount > 0 ? `+仕込手当(¥${craftRewardRate}×${stat.craftItemsCount}個)` : "";
     setWeeklyBonusNotes((prev) => ({
       ...prev,
-      [stat.userId]: `店舗残り7割歩合${storeRemainingBonusRate}%${craftText}${ingText}+${stat.roleName || "役職"}手当(¥${allowance.toLocaleString()})`,
+      [stat.userId]: `店舗残り${storeRate}%歩合${storeRemainingBonusRate}%${craftText}${ingText}+${stat.roleName || "役職"}手当(¥${allowance.toLocaleString()})`,
     }));
   };
 
@@ -587,11 +590,32 @@ export default function ExecutivePage() {
       newInputs[stat.userId] = rec;
       const ingText = storeSettings.enableInventory && ingCount > 0 ? `+素材手当(¥${ingredientRewardRate}×${ingCount}個)` : "";
       const craftText = storeSettings.enableCrafting && stat.craftItemsCount > 0 ? `+仕込手当(¥${craftRewardRate}×${stat.craftItemsCount}個)` : "";
-      newNotes[stat.userId] = `店舗残り7割歩合${storeRemainingBonusRate}%${craftText}${ingText}+${stat.roleName || "役職"}手当(¥${allowance.toLocaleString()})`;
+      newNotes[stat.userId] = `店舗残り${storeRate}%歩合${storeRemainingBonusRate}%${craftText}${ingText}+${stat.roleName || "役職"}手当(¥${allowance.toLocaleString()})`;
     });
     setWeeklyBonusInputs((prev) => ({ ...prev, ...newInputs }));
     setWeeklyBonusNotes((prev) => ({ ...prev, ...newNotes }));
-    alert("全スタッフに試算推奨ボーナス額（素材手当含む）を反映しました！内容を調整後、保存または週次確定を行ってください。");
+    alert("全スタッフに試算推奨ボーナス額（素材手当含む）を一括反映しました！内容を調整後、保存または週次確定を行ってください。");
+  };
+
+  // ボーナス査定のやり直し・リセット（全スタッフ推奨額で初期化）
+  const handleResetAndReapplyAllBonuses = () => {
+    if (!confirm(`【${currentWeeklySummary.weekLabel}】の全スタッフのボーナス入力をやり直しますか？\n入力欄をすべてクリアし、最新の査定ルール（手元純残り${storeRate}%からの歩合、クラフト、素材調達、役職手当）に基づく推奨額にリセットします。`)) {
+      return;
+    }
+    const newInputs: { [id: string]: number } = {};
+    const newNotes: { [id: string]: string } = {};
+    currentWeeklySummary.staffStats.forEach((stat) => {
+      const rec = calculateRecommendedWeeklyBonus(stat);
+      const allowance = getStaffRoleAllowance(stat);
+      const ingCount = getStaffIngredientCount(stat);
+      newInputs[stat.userId] = rec;
+      const ingText = storeSettings.enableInventory && ingCount > 0 ? `+素材手当(¥${ingredientRewardRate}×${ingCount}個)` : "";
+      const craftText = storeSettings.enableCrafting && stat.craftItemsCount > 0 ? `+仕込手当(¥${craftRewardRate}×${stat.craftItemsCount}個)` : "";
+      newNotes[stat.userId] = `店舗残り${storeRate}%歩合${storeRemainingBonusRate}%${craftText}${ingText}+${stat.roleName || "役職"}手当(¥${allowance.toLocaleString()})`;
+    });
+    setWeeklyBonusInputs(newInputs);
+    setWeeklyBonusNotes(newNotes);
+    alert(`【${currentWeeklySummary.weekLabel}】のボーナス額を推奨計算でリセット・やり直しました！確認の上「全員分を一括保存」してください。`);
   };
 
   // 全スタッフの入力を一括保存
@@ -1805,11 +1829,11 @@ export default function ExecutivePage() {
                     <span className="text-base font-black text-white">{formatCurrency(currentWeeklySummary.sakura.salesAmount)}</span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-amber-400">手渡済インセンティブ (3割):</span>
+                    <span className="text-amber-400">手渡済インセンティブ ({staffIncentiveRate}%):</span>
                     <span className="font-bold text-amber-300">{formatCurrency(currentWeeklySummary.sakura.incentive30)}</span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-emerald-400">店舗手元純残り (7割):</span>
+                    <span className="text-emerald-400">店舗手元純残り ({storeRate}%):</span>
                     <span className="font-bold text-emerald-300">{formatCurrency(currentWeeklySummary.sakura.storeRemaining70)}</span>
                   </div>
                   <div className="flex items-center justify-between pt-1 border-t border-stone-800/80">
@@ -1834,11 +1858,11 @@ export default function ExecutivePage() {
                     <span className="text-base font-black text-white">{formatCurrency(currentWeeklySummary.buonViaggio.salesAmount)}</span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-amber-400">手渡済インセンティブ (3割):</span>
+                    <span className="text-amber-400">手渡済インセンティブ ({staffIncentiveRate}%):</span>
                     <span className="font-bold text-amber-300">{formatCurrency(currentWeeklySummary.buonViaggio.incentive30)}</span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-emerald-400">店舗手元純残り (7割):</span>
+                    <span className="text-emerald-400">店舗手元純残り ({storeRate}%):</span>
                     <span className="font-bold text-emerald-300">{formatCurrency(currentWeeklySummary.buonViaggio.storeRemaining70)}</span>
                   </div>
                   <div className="flex items-center justify-between pt-1 border-t border-stone-800/80">
@@ -1863,11 +1887,11 @@ export default function ExecutivePage() {
                     <span className="text-base font-black text-amber-300">{formatCurrency(currentWeeklySummary.totalSales)}</span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-amber-400">手渡総額 (3割):</span>
+                    <span className="text-amber-400">手渡総額 ({staffIncentiveRate}%):</span>
                     <span className="font-bold text-amber-300">{formatCurrency(currentWeeklySummary.totalIncentive30)}</span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-emerald-400">店舗純残り総額 (7割):</span>
+                    <span className="text-emerald-400">店舗純残り総額 ({storeRate}%):</span>
                     <span className="font-bold text-emerald-300">{formatCurrency(currentWeeklySummary.totalStoreRemaining70)}</span>
                   </div>
                   <div className="flex items-center justify-between pt-1 border-t border-stone-800/80">
@@ -2002,20 +2026,30 @@ export default function ExecutivePage() {
               <div>
                 <span className="text-xs font-black text-white flex items-center gap-1.5">
                   <Calculator className="w-4 h-4 text-amber-400" />
-                  ボーナス試算アシスト（店主の査定目安設定）
+                  ボーナス査定・支給基準設定（店主の査定目安ルール）
                 </span>
                 <p className="text-[11px] text-stone-400 mt-0.5">
-                  店舗手元残り（7割）からの歩合還元率や仕込み手当を設定し、ワンクリックで推奨金額を各スタッフの入力欄にセットできます
+                  店舗手元残り（{storeRate}%）からの歩合還元率や各種手当を設定し、ワンクリックで推奨金額を各スタッフに自動計算・反映できます
                 </p>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <button
                   type="button"
                   onClick={handleApplyAllRecommended}
                   className="px-3.5 py-2 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-200 text-xs font-bold border border-stone-700 shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                  title="現在の査定ルールに基づく推奨金額を一括セット"
                 >
                   <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                  全スタッフに試算推奨額を一括反映
+                  推奨額を一括反映
+                </button>
+                <button
+                  type="button"
+                  onClick={handleResetAndReapplyAllBonuses}
+                  className="px-3.5 py-2 rounded-xl bg-stone-800 hover:bg-stone-700 text-amber-300 text-xs font-bold border border-amber-600/40 shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                  title="全スタッフの入力をやり直して最新推奨額でリセット"
+                >
+                  <RotateCcw className="w-3.5 h-3.5 text-amber-400" />
+                  推奨額でやり直す (リセット)
                 </button>
                 <button
                   type="button"
@@ -2028,12 +2062,38 @@ export default function ExecutivePage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 text-xs">
+              {/* ① 店舗手元純残り割合 */}
+              <div className="bg-stone-950 p-3.5 rounded-2xl border border-amber-500/30">
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-[11px] font-bold text-amber-300">
+                    ① 店舗手元純残り割合:
+                  </label>
+                  <span className="text-[9px] text-stone-400">手渡:{staffIncentiveRate}%</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="5"
+                    value={storeRate}
+                    onChange={(e) => {
+                      const v = Math.min(100, Math.max(0, parseInt(e.target.value) || 0));
+                      updateStoreSettings({ storeRemainingRate: v });
+                    }}
+                    className="w-16 px-2.5 py-1.5 bg-stone-900 rounded-xl border border-amber-500/50 font-black text-amber-300 focus:border-amber-400"
+                  />
+                  <span className="text-stone-400 font-semibold">%（店純利益）</span>
+                </div>
+              </div>
+
+              {/* ② 店舗純残りからの還元歩合率 */}
               <div className="bg-stone-950 p-3.5 rounded-2xl border border-stone-800">
                 <label className="block text-[11px] font-bold text-stone-300 mb-1">
-                  ① 店舗残り7割からの歩合率 (%):
+                  ② 手元残り({storeRate}%)還元歩合:
                 </label>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5">
                   <input
                     type="number"
                     min="0"
@@ -2044,22 +2104,22 @@ export default function ExecutivePage() {
                       setStoreRemainingBonusRate(v);
                       updateStoreSettings({ storeRemainingBonusRate: v });
                     }}
-                    className="w-20 px-2.5 py-1.5 bg-stone-900 rounded-xl border border-stone-700 font-black text-white focus:border-amber-500"
+                    className="w-16 px-2.5 py-1.5 bg-stone-900 rounded-xl border border-stone-700 font-black text-white focus:border-amber-500"
                   />
-                  <span className="text-stone-400 font-semibold">%（手元純利益還元）</span>
+                  <span className="text-stone-400 font-semibold">%（ボーナス）</span>
                 </div>
               </div>
 
               <div className={`bg-stone-950 p-3.5 rounded-2xl border ${storeSettings.enableCrafting ? "border-stone-800" : "border-stone-800/40 opacity-50"}`}>
                 <div className="flex items-center justify-between mb-1">
                   <label className="block text-[11px] font-bold text-stone-300">
-                    ② クラフト仕込み手当 (円/個):
+                    ③ クラフト仕込み手当:
                   </label>
                   {!storeSettings.enableCrafting && (
                     <span className="text-[9px] font-bold text-amber-500 bg-amber-950/60 px-1.5 py-0.2 rounded border border-amber-800">機能OFF中</span>
                   )}
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5">
                   <input
                     type="number"
                     min="0"
@@ -2071,22 +2131,22 @@ export default function ExecutivePage() {
                       updateStoreSettings({ craftRewardRate: v });
                     }}
                     disabled={!storeSettings.enableCrafting}
-                    className="w-24 px-2.5 py-1.5 bg-stone-900 rounded-xl border border-stone-700 font-black text-white focus:border-amber-500 disabled:opacity-50"
+                    className="w-20 px-2.5 py-1.5 bg-stone-900 rounded-xl border border-stone-700 font-black text-white focus:border-amber-500 disabled:opacity-50"
                   />
-                  <span className="text-stone-400 font-semibold">円（料理仕込み毎）</span>
+                  <span className="text-stone-400 font-semibold">円/品</span>
                 </div>
               </div>
 
               <div className={`bg-stone-950 p-3.5 rounded-2xl border ${storeSettings.enableInventory ? "border-stone-800" : "border-stone-800/40 opacity-50"}`}>
                 <div className="flex items-center justify-between mb-1">
                   <label className="block text-[11px] font-bold text-emerald-400">
-                    ③ 素材調達手当 (円/個):
+                    ④ 素材調達手当:
                   </label>
                   {!storeSettings.enableInventory && (
                     <span className="text-[9px] font-bold text-amber-500 bg-amber-950/60 px-1.5 py-0.2 rounded border border-amber-800">機能OFF中</span>
                   )}
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5">
                   <input
                     type="number"
                     min="0"
@@ -2098,26 +2158,26 @@ export default function ExecutivePage() {
                       updateStoreSettings({ ingredientRewardRate: v });
                     }}
                     disabled={!storeSettings.enableInventory}
-                    className="w-24 px-2.5 py-1.5 bg-stone-900 rounded-xl border border-stone-700 font-black text-emerald-300 focus:border-emerald-500 disabled:opacity-50"
+                    className="w-20 px-2.5 py-1.5 bg-stone-900 rounded-xl border border-stone-700 font-black text-emerald-300 focus:border-emerald-500 disabled:opacity-50"
                   />
-                  <span className="text-stone-400 font-semibold">円（素材補充毎）</span>
+                  <span className="text-stone-400 font-semibold">円/個</span>
                 </div>
               </div>
 
               <div className="bg-stone-950 p-3.5 rounded-2xl border border-stone-800">
                 <label className="block text-[11px] font-bold text-stone-300 mb-1">
-                  ④ 役職未設定時の標準基本手当:
+                  ⑤ 標準基本手当:
                 </label>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5">
                   <input
                     type="number"
                     min="0"
                     step="1000"
                     value={baseAllowance}
                     onChange={(e) => setBaseAllowance(parseInt(e.target.value) || 0)}
-                    className="w-28 px-2.5 py-1.5 bg-stone-900 rounded-xl border border-stone-700 font-black text-white focus:border-amber-500"
+                    className="w-24 px-2.5 py-1.5 bg-stone-900 rounded-xl border border-stone-700 font-black text-white focus:border-amber-500"
                   />
-                  <span className="text-stone-400 font-semibold">円（共通基本給）</span>
+                  <span className="text-stone-400 font-semibold">円/週</span>
                 </div>
               </div>
             </div>
@@ -2456,10 +2516,10 @@ export default function ExecutivePage() {
                         </span>
                       </div>
 
-                      {/* ② 手渡しインセンティブ (3割 / 30%) */}
+                      {/* ② 手渡しインセンティブ (スタッフ手渡し分) */}
                       <div className="p-3.5 rounded-2xl bg-amber-950/30 border border-amber-500/30">
                         <span className="text-[11px] font-bold text-amber-400 block">
-                          ② 手渡し済 (3割)
+                          ② 手渡し済 ({staffIncentiveRate}%)
                         </span>
                         <span className="text-lg font-black text-amber-300 block mt-1">
                           {formatCurrency(stat.incentive30)}
@@ -2469,10 +2529,10 @@ export default function ExecutivePage() {
                         </span>
                       </div>
 
-                      {/* ③ 店舗手元残り (7割 / 70%) */}
+                      {/* ③ 店舗手元残り (金庫入金分) */}
                       <div className="p-3.5 rounded-2xl bg-emerald-950/30 border border-emerald-500/30">
                         <span className="text-[11px] font-bold text-emerald-400 block">
-                          ③ 店舗純手元残り (7割)
+                          ③ 店舗純手元残り ({storeRate}%)
                         </span>
                         <span className="text-lg font-black text-emerald-300 block mt-1">
                           {formatCurrency(stat.storeRemaining70)}
@@ -2554,7 +2614,7 @@ export default function ExecutivePage() {
                             <span className="text-[9px] text-stone-400 ml-1">({stat.roleName || "役職"})</span>
                           </span>
                           <span className="bg-stone-900 px-2 py-0.5 rounded-md border border-stone-800 text-stone-300">
-                            7割歩合({storeRemainingBonusRate}%): <strong className="text-emerald-300">{formatCurrency(Math.round(stat.storeRemaining70 * (storeRemainingBonusRate / 100)))}</strong>
+                            手元残り歩合({storeRemainingBonusRate}%): <strong className="text-emerald-300">{formatCurrency(Math.round(stat.storeRemaining70 * (storeRemainingBonusRate / 100)))}</strong>
                           </span>
                           {storeSettings.enableCrafting && (
                             <span className="bg-stone-900 px-2 py-0.5 rounded-md border border-stone-800 text-stone-300">
@@ -3743,6 +3803,94 @@ export default function ExecutivePage() {
               >
                 {storeSettings.enableInventory ? "する (有効中)" : "しない (停止中)"}
               </button>
+            </div>
+
+            {/* ③ 店舗手元純残りの割合設定 */}
+            <div className="p-5 rounded-2xl border border-amber-500/50 bg-stone-950 shadow-xs md:col-span-2 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-stone-800 pb-3">
+                <div className="flex items-start gap-3">
+                  <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-xl shrink-0 bg-amber-950 text-amber-400 border border-amber-600/40">
+                    🏦
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-extrabold text-base text-white">店舗手元純残りの割合設定</span>
+                      <span className="text-[10px] font-black px-2.5 py-0.5 rounded-full bg-amber-950 text-amber-300 border border-amber-500/50">
+                        現在: {storeRate}% (店手元) / {staffIncentiveRate}% (スタッフ手渡し)
+                      </span>
+                    </div>
+                    <p className="text-xs text-stone-400 mt-1 leading-relaxed">
+                      料理販売時に売上総額から<strong>店舗（金庫）に残す割合</strong>を設定します。残りの <strong>{staffIncentiveRate}%</strong> が販売スタッフへ即時手渡しされるインセンティブとなります。ボーナスの歩合還元計算やサマリー表示にも自動連動します。
+                    </p>
+                  </div>
+                </div>
+
+                {/* 現在の設定値バッジ */}
+                <div className="flex items-center gap-2 self-start sm:self-center bg-stone-900 px-4 py-2 rounded-2xl border border-stone-800 shrink-0">
+                  <span className="text-xs text-stone-400 font-bold">店舗残り:</span>
+                  <span className="text-2xl font-black text-amber-300">{storeRate}%</span>
+                </div>
+              </div>
+
+              {/* スライダー & 数値入力 & クイック選択 */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+                <div className="md:col-span-2 space-y-2">
+                  <div className="flex items-center justify-between text-xs text-stone-400 font-bold">
+                    <span>0% (全額手渡し)</span>
+                    <span className="text-amber-400 font-black">店舗純手元 {storeRate}% ⇄ 手渡し {staffIncentiveRate}%</span>
+                    <span>100% (全額金庫入金)</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    step="1"
+                    value={storeRate}
+                    onChange={(e) => {
+                      const val = Math.min(100, Math.max(0, parseInt(e.target.value) || 0));
+                      updateStoreSettings({ storeRemainingRate: val });
+                    }}
+                    className="w-full h-2.5 bg-stone-800 rounded-lg appearance-none cursor-pointer accent-amber-500"
+                  />
+                </div>
+
+                <div className="flex items-center justify-between md:justify-end gap-2">
+                  <span className="text-xs text-stone-400 font-bold">直接指定:</span>
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="5"
+                      value={storeRate}
+                      onChange={(e) => {
+                        const val = Math.min(100, Math.max(0, parseInt(e.target.value) || 0));
+                        updateStoreSettings({ storeRemainingRate: val });
+                      }}
+                      className="w-20 px-3 py-1.5 bg-stone-900 rounded-xl border border-stone-700 font-black text-amber-300 text-center text-sm focus:border-amber-500"
+                    />
+                    <span className="text-stone-400 font-bold text-sm">%</span>
+                  </div>
+
+                  {/* クイック選択 */}
+                  <div className="flex items-center gap-1">
+                    {[50, 60, 70, 80].map((rate) => (
+                      <button
+                        key={rate}
+                        type="button"
+                        onClick={() => updateStoreSettings({ storeRemainingRate: rate })}
+                        className={`px-2 py-1 rounded-lg text-[10px] font-black transition-all cursor-pointer ${
+                          storeRate === rate
+                            ? "bg-amber-500 text-stone-950 shadow-xs"
+                            : "bg-stone-900 hover:bg-stone-800 text-stone-400 border border-stone-800"
+                        }`}
+                      >
+                        {rate}%
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>

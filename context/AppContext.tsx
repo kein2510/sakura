@@ -358,6 +358,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const defaultStoreSettings: StoreSettings = {
     enableCrafting: true,
     enableInventory: true,
+    storeRemainingRate: 70,
     ingredientRewardRate: 50,
     craftRewardRate: 50,
     storeRemainingBonusRate: 10,
@@ -1274,8 +1275,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const salesCount = userSales.length;
       const itemsSold = sakuraItemsSold + buonViaggioItemsSold;
 
-      const incentive30 = Math.floor(salesAmount * 0.3);
-      const storeRemaining70 = salesAmount - incentive30;
+      const storeRate = storeSettings.storeRemainingRate ?? 70;
+      const storeRemaining70 = Math.round(salesAmount * (storeRate / 100));
+      const incentive30 = salesAmount - storeRemaining70;
 
       const userCraftLogs = weekLogs.filter(
         (l) => l.userName === u.displayName && l.category === "craft"
@@ -1420,13 +1422,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       };
     });
 
+    const storeRate = storeSettings.storeRemainingRate ?? 70;
     const sakuraSalesTotal = staffStats.reduce((sum, s) => sum + s.sakuraSalesAmount, 0);
-    const sakuraIncentive30 = Math.floor(sakuraSalesTotal * 0.3);
-    const sakuraStoreRemaining70 = sakuraSalesTotal - sakuraIncentive30;
+    const sakuraStoreRemaining70 = Math.round(sakuraSalesTotal * (storeRate / 100));
+    const sakuraIncentive30 = sakuraSalesTotal - sakuraStoreRemaining70;
 
     const bvSalesTotal = staffStats.reduce((sum, s) => sum + s.buonViaggioSalesAmount, 0);
-    const bvIncentive30 = Math.floor(bvSalesTotal * 0.3);
-    const bvStoreRemaining70 = bvSalesTotal - bvIncentive30;
+    const bvStoreRemaining70 = Math.round(bvSalesTotal * (storeRate / 100));
+    const bvIncentive30 = bvSalesTotal - bvStoreRemaining70;
 
     const totalSales = staffStats.reduce((sum, s) => sum + s.salesAmount, 0);
     const totalIncentive30 = staffStats.reduce((sum, s) => sum + s.incentive30, 0);
@@ -1793,21 +1796,23 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setSales((prev) => [newSale, ...prev]);
     syncSaleToCloud(newSale);
 
-    // 金庫残高への7割入金
-    const incentive30 = Math.floor(totalSaleAmount * 0.3);
-    const storeRemaining70 = totalSaleAmount - incentive30;
+    // 金庫残高への店舗手元純残り入金
+    const storeRemainingPercent = storeSettings.storeRemainingRate ?? 70;
+    const incentivePercent = 100 - storeRemainingPercent;
+    const storeRemainingAmount = Math.round(totalSaleAmount * (storeRemainingPercent / 100));
+    const incentiveAmount = totalSaleAmount - storeRemainingAmount;
 
-    if (storeRemaining70 > 0) {
+    if (storeRemainingAmount > 0) {
       setVaultBalance((prev) => {
-        const next = prev + storeRemaining70;
+        const next = prev + storeRemainingAmount;
         syncStateToCloud("vault_balance", { balance: next });
         return next;
       });
 
       logAction({
         category: "vault",
-        title: `【${shopName}】金庫売上入金 (店舗7割: +¥${storeRemaining70.toLocaleString()})`,
-        detail: `売上伝票「${newSale.id}」(売上総額 ¥${totalSaleAmount.toLocaleString()}) より、スタッフ手渡し3割 (¥${incentive30.toLocaleString()}) を除いた店舗手元純残り7割 (¥${storeRemaining70.toLocaleString()}) を金庫に入金しました`,
+        title: `【${shopName}】金庫売上入金 (店舗${storeRemainingPercent}%: +¥${storeRemainingAmount.toLocaleString()})`,
+        detail: `売上伝票「${newSale.id}」(売上総額 ¥${totalSaleAmount.toLocaleString()}) より、スタッフ手渡し${incentivePercent}% (¥${incentiveAmount.toLocaleString()}) を除いた店舗手元純残り${storeRemainingPercent}% (¥${storeRemainingAmount.toLocaleString()}) を金庫に入金しました`,
       });
     }
 
@@ -1815,13 +1820,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const summaryText = saleItemsList.map((s) => `${s.itemName}×${s.quantity}`).join(", ");
     logAction({
       category: "sale",
-      title: `【${shopName}】商品の販売 (売上 ¥${totalSaleAmount.toLocaleString()} / 店手元7割 ¥${storeRemaining70.toLocaleString()})`,
+      title: `【${shopName}】商品の販売 (売上 ¥${totalSaleAmount.toLocaleString()} / 店手元${storeRemainingPercent}% ¥${storeRemainingAmount.toLocaleString()})`,
       detail: `販売明細: ${summaryText} (在庫減算済)`,
     });
 
     return {
       success: true,
-      message: `【${shopName}】商品を販売しました！売上: ¥${totalSaleAmount.toLocaleString()} (手渡し3割: ¥${incentive30.toLocaleString()} / 金庫入金7割: ¥${storeRemaining70.toLocaleString()})`,
+      message: `【${shopName}】商品を販売しました！売上: ¥${totalSaleAmount.toLocaleString()} (手渡し${incentivePercent}%: ¥${incentiveAmount.toLocaleString()} / 金庫入金${storeRemainingPercent}%: ¥${storeRemainingAmount.toLocaleString()})`,
     };
   };
 
@@ -1957,14 +1962,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
     syncItemsBatchToCloud(restoredItems);
 
-    // 2. 金庫から売上7割（店舗手元純残り）を差し引く
+    // 2. 金庫から売上（店舗手元純残り分）を差し引く
     const totalAmount = sale.totalAmount ?? sale.total_amount ?? 0;
-    const incentive30 = Math.floor(totalAmount * 0.3);
-    const storeRemaining70 = totalAmount - incentive30;
+    const storeRemainingPercent = storeSettings.storeRemainingRate ?? 70;
+    const storeRemainingAmount = Math.round(totalAmount * (storeRemainingPercent / 100));
 
-    if (storeRemaining70 > 0) {
+    if (storeRemainingAmount > 0) {
       setVaultBalance((prev) => {
-        const next = Math.max(0, prev - storeRemaining70);
+        const next = Math.max(0, prev - storeRemainingAmount);
         syncStateToCloud("vault_balance", { balance: next });
         return next;
       });
@@ -1984,12 +1989,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     logAction({
       category: "sale",
       title: `【${shopName}】売上伝票 #${sale.id} の取り消し`,
-      detail: `「${caller}」が売上伝票を取り消しました。商品在庫を復元（${itemSummary}）、金庫から売上7割分 (-¥${storeRemaining70.toLocaleString()}) を差し引きました`,
+      detail: `「${caller}」が売上伝票を取り消しました。商品在庫を復元（${itemSummary}）、金庫から店舗手元純残り${storeRemainingPercent}%分 (-¥${storeRemainingAmount.toLocaleString()}) を差し引きました`,
     });
 
     return {
       success: true,
-      message: `売上伝票 #${sale.id} を取り消しました！商品在庫を元に戻し、金庫の売上分 (¥${storeRemaining70.toLocaleString()}) を減額しました。`,
+      message: `売上伝票 #${sale.id} を取り消しました！商品在庫を元に戻し、金庫の売上分 (¥${storeRemainingAmount.toLocaleString()}) を減額しました。`,
     };
   };
 

@@ -27,9 +27,10 @@ export interface StaffUser {
 export interface StoreSettings {
   enableCrafting: boolean;          // クラフト作成機能をする(true)/しない(false)
   enableInventory: boolean;         // 全体在庫管理をする(true)/しない(false)
+  storeRemainingRate?: number;      // 店舗手元純残り割合 (%) (デフォルト: 70)
   ingredientRewardRate?: number;    // 素材調達手当 (円/個)
   craftRewardRate?: number;         // クラフト仕込み手当 (円/個)
-  storeRemainingBonusRate?: number; // 店舗7割歩合率 (%)
+  storeRemainingBonusRate?: number; // 店舗残り歩合率 (%)
 }
 
 export type ItemType = "product" | "ingredient"; // product: 販売商品, ingredient: 作成用素材
