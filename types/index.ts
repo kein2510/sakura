@@ -108,6 +108,9 @@ export interface Sale {
   staffName: string;
   staffUserId?: string; // 担当スタッフのID (スタッフ別売上集計用)
   totalAmount: number;
+  subtotalAmount?: number;         // 値引き前小計 (¥)
+  discountAmount?: number;         // 調整値引き額 (¥)
+  discountReason?: string;         // 調整値引きの理由・メモ
   items: SaleItem[];
   created_at: string;
   // 販売時点の店舗手元純残り・インセンティブ記録（割合設定変更の影響を受けないように固定化）

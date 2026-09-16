@@ -22,6 +22,7 @@ import {
   ChevronRight,
   Clock,
   ShoppingBag,
+  Tag,
 } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import { formatCurrency, formatDate } from "@/lib/utils";
@@ -924,6 +925,15 @@ export default function SalesPage() {
                           ? "電子マネー"
                           : "現金"}
                       </span>
+
+                      {/* 調整値引きバッジ */}
+                      {sale.discountAmount && sale.discountAmount > 0 && (
+                        <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1">
+                          <Tag className="w-3 h-3 text-amber-400" />
+                          値引 -¥{sale.discountAmount.toLocaleString()}{sale.discountReason ? ` (${sale.discountReason})` : ""}
+                        </span>
+                      )}
+
                       {/* 日時 */}
                       <span className="text-[11px] text-stone-500">
                         {formatDate(sale.created_at)}
@@ -955,14 +965,34 @@ export default function SalesPage() {
                   {/* 売上金額 ＆ 取消ボタン */}
                   <div className="flex items-center gap-3 shrink-0 self-end sm:self-auto">
                     <div className="text-right">
-                      <span className="text-[10px] text-stone-400 block">売上金額</span>
-                      <span
-                        className={`text-lg sm:text-xl font-black ${
-                          isBV ? "text-emerald-400" : "text-rose-400"
-                        }`}
-                      >
-                        {formatCurrency(amount)}
-                      </span>
+                      {sale.discountAmount && sale.discountAmount > 0 ? (
+                        <div>
+                          <div className="text-[10px] text-stone-500 line-through font-bold">
+                            小計 {formatCurrency(sale.subtotalAmount || (amount + sale.discountAmount))}
+                          </div>
+                          <div className="text-[10px] text-amber-400 font-black">
+                            値引 -¥{sale.discountAmount.toLocaleString()}
+                          </div>
+                          <span
+                            className={`text-lg sm:text-xl font-black block tracking-tight ${
+                              isBV ? "text-emerald-400" : "text-rose-400"
+                            }`}
+                          >
+                            {formatCurrency(amount)}
+                          </span>
+                        </div>
+                      ) : (
+                        <div>
+                          <span className="text-[10px] text-stone-400 block">売上金額</span>
+                          <span
+                            className={`text-lg sm:text-xl font-black ${
+                              isBV ? "text-emerald-400" : "text-rose-400"
+                            }`}
+                          >
+                            {formatCurrency(amount)}
+                          </span>
+                        </div>
+                      )}
                     </div>
 
                     <button

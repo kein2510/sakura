@@ -123,10 +123,12 @@ interface AppContextType {
   products: Item[];
   ingredients: Item[];
 
-  // メイン業務アクション (店舗shopId指定対応)
+  // メイン業務アクション (店舗shopId指定・調整値引き対応)
   sellProducts: (
     quantities: { [itemId: string]: number },
-    shopId?: ShopId
+    shopId?: ShopId,
+    discountAmount?: number,
+    discountReason?: string
   ) => {
     success: boolean;
     message: string;
@@ -628,19 +630,42 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
       if (!salesErr && cloudSales) {
         if (cloudSales.length > 0) {
-          const mappedSales: Sale[] = cloudSales.map((s: any) => ({
-            id: s.id,
-            shopId: (s.shop_id as ShopId) || "sakura",
-            staffName: s.staff_name,
-            staffUserId: s.staff_user_id || undefined,
-            totalAmount: Number(s.total_amount),
-            total_amount: Number(s.total_amount),
-            staff_name: s.staff_name,
-            payment_method: s.payment_method,
-            notes: s.notes || undefined,
-            items: s.items || [],
-            created_at: s.created_at,
-          }));
+          const mappedSales: Sale[] = cloudSales.map((s: any) => {
+            let discountAmount = s.discount_amount ? Number(s.discount_amount) : undefined;
+            let subtotalAmount = s.subtotal_amount ? Number(s.subtotal_amount) : undefined;
+            let discountReason = s.discount_reason || undefined;
+
+            // notes からのフォールバックパース（例: "【調整値引き: -¥1,000 (常連割)】"）
+            if (discountAmount === undefined && typeof s.notes === "string") {
+              const match = s.notes.match(/【調整値引き:\s*-?¥([0-9,]+)(?:\s*\(([^)]+)\))?】/);
+              if (match) {
+                discountAmount = parseInt(match[1].replace(/,/g, ""), 10) || 0;
+                if (match[2]) discountReason = match[2];
+              }
+            }
+
+            const totalAmount = Number(s.total_amount);
+            if (subtotalAmount === undefined && discountAmount && discountAmount > 0) {
+              subtotalAmount = totalAmount + discountAmount;
+            }
+
+            return {
+              id: s.id,
+              shopId: (s.shop_id as ShopId) || "sakura",
+              staffName: s.staff_name,
+              staffUserId: s.staff_user_id || undefined,
+              totalAmount: totalAmount,
+              total_amount: totalAmount,
+              subtotalAmount: subtotalAmount,
+              discountAmount: discountAmount,
+              discountReason: discountReason,
+              staff_name: s.staff_name,
+              payment_method: s.payment_method,
+              notes: s.notes || undefined,
+              items: s.items || [],
+              created_at: s.created_at,
+            };
+          });
           setSales(mappedSales);
         } else if (initialSales.length > 0) {
           for (const s of initialSales) {
@@ -1735,10 +1760,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const products = items.filter((i) => i.type === "product");
   const ingredients = items.filter((i) => i.type === "ingredient");
 
-  // 3. メイン画面: 「売る」処理
+  // 3. メイン画面: 「売る」処理（調整値引き対応）
   const sellProducts = (
     quantities: { [itemId: string]: number },
-    shopId?: ShopId
+    shopId?: ShopId,
+    discountAmount?: number,
+    discountReason?: string
   ): {
     success: boolean;
     message: string;
@@ -1762,7 +1789,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }
     }
 
-    let totalSaleAmount = 0;
+    let subtotal = 0;
     const saleItemsList: { itemId: string; itemName: string; quantity: number; unitPrice: number; subtotal: number }[] = [];
     let determinedShopId: ShopId | undefined = shopId;
 
@@ -1772,16 +1799,21 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (!determinedShopId && item.shopId) {
         determinedShopId = item.shopId;
       }
-      const subtotal = item.selling_price * orderQty;
-      totalSaleAmount += subtotal;
+      const itemSubtotal = item.selling_price * orderQty;
+      subtotal += itemSubtotal;
       saleItemsList.push({
         itemId: item.id,
         itemName: item.name,
         quantity: orderQty,
         unitPrice: item.selling_price,
-        subtotal,
+        subtotal: itemSubtotal,
       });
     }
+
+    // 調整値引きの計算
+    const rawDiscount = Number(discountAmount) || 0;
+    const validDiscount = Math.max(0, Math.min(subtotal, Math.round(rawDiscount)));
+    const finalSaleAmount = Math.max(0, subtotal - validDiscount);
 
     // 在庫の減算（在庫管理機能が有効な場合のみ減算）
     if (storeSettings.enableInventory) {
@@ -1807,20 +1839,28 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const finalShopId: ShopId = determinedShopId || "sakura";
     const shopName = finalShopId === "buon_viaggio" ? "Buon viaggio" : "和食さくら";
 
-    // 金庫残高への店舗手元純残り入金 ＆ 販売時点の割合記録
+    // 金庫残高への店舗手元純残り入金 ＆ 販売時点の割合記録（値引き後の実売上から按分）
     const storeRemainingPercent = storeSettings.storeRemainingRate ?? 70;
     const incentivePercent = 100 - storeRemainingPercent;
-    const storeRemainingAmount = Math.round(totalSaleAmount * (storeRemainingPercent / 100));
-    const incentiveAmount = totalSaleAmount - storeRemainingAmount;
+    const storeRemainingAmount = Math.round(finalSaleAmount * (storeRemainingPercent / 100));
+    const incentiveAmount = finalSaleAmount - storeRemainingAmount;
+
+    const discountNote = validDiscount > 0
+      ? `【調整値引き: -¥${validDiscount.toLocaleString()}${discountReason?.trim() ? ` (${discountReason.trim()})` : ""}】`
+      : undefined;
 
     const newSale: Sale = {
       id: `sale-${Date.now().toString().slice(-6)}`,
       shopId: finalShopId,
       staffName: currentUser ? currentUser.displayName : "店員",
       staffUserId: currentUser ? currentUser.id : undefined,
-      totalAmount: totalSaleAmount,
-      total_amount: totalSaleAmount,
+      totalAmount: finalSaleAmount,
+      total_amount: finalSaleAmount,
+      subtotalAmount: subtotal,
+      discountAmount: validDiscount > 0 ? validDiscount : undefined,
+      discountReason: discountReason?.trim() || undefined,
       staff_name: currentUser ? currentUser.displayName : "店員",
+      notes: discountNote,
       items: saleItemsList,
       created_at: new Date().toISOString(),
       storeRemainingRate: storeRemainingPercent,
@@ -1838,24 +1878,33 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         return next;
       });
 
+      const vaultDetail = validDiscount > 0
+        ? `売上伝票「${newSale.id}」(小計 ¥${subtotal.toLocaleString()} / 値引き -¥${validDiscount.toLocaleString()} / 実売上 ¥${finalSaleAmount.toLocaleString()}) より、スタッフ手渡し${incentivePercent}% (¥${incentiveAmount.toLocaleString()}) を除いた店舗手元純残り${storeRemainingPercent}% (¥${storeRemainingAmount.toLocaleString()}) を金庫に入金しました`
+        : `売上伝票「${newSale.id}」(売上総額 ¥${finalSaleAmount.toLocaleString()}) より、スタッフ手渡し${incentivePercent}% (¥${incentiveAmount.toLocaleString()}) を除いた店舗手元純残り${storeRemainingPercent}% (¥${storeRemainingAmount.toLocaleString()}) を金庫に入金しました`;
+
       logAction({
         category: "vault",
         title: `【${shopName}】金庫売上入金 (店舗${storeRemainingPercent}%: +¥${storeRemainingAmount.toLocaleString()})`,
-        detail: `売上伝票「${newSale.id}」(売上総額 ¥${totalSaleAmount.toLocaleString()}) より、スタッフ手渡し${incentivePercent}% (¥${incentiveAmount.toLocaleString()}) を除いた店舗手元純残り${storeRemainingPercent}% (¥${storeRemainingAmount.toLocaleString()}) を金庫に入金しました`,
+        detail: vaultDetail,
       });
     }
 
     // 操作ログ記録
     const summaryText = saleItemsList.map((s) => `${s.itemName}×${s.quantity}`).join(", ");
+    const saleLogTitle = validDiscount > 0
+      ? `【${shopName}】商品の販売 (売上 ¥${finalSaleAmount.toLocaleString()} [値引き -¥${validDiscount.toLocaleString()}] / 店手元${storeRemainingPercent}% ¥${storeRemainingAmount.toLocaleString()})`
+      : `【${shopName}】商品の販売 (売上 ¥${finalSaleAmount.toLocaleString()} / 店手元${storeRemainingPercent}% ¥${storeRemainingAmount.toLocaleString()})`;
+
     logAction({
       category: "sale",
-      title: `【${shopName}】商品の販売 (売上 ¥${totalSaleAmount.toLocaleString()} / 店手元${storeRemainingPercent}% ¥${storeRemainingAmount.toLocaleString()})`,
-      detail: `販売明細: ${summaryText} (在庫減算済)`,
+      title: saleLogTitle,
+      detail: `販売明細: ${summaryText} (在庫減算済)${validDiscount > 0 ? ` ※調整値引き: -¥${validDiscount.toLocaleString()}${discountReason ? ` (${discountReason})` : ""}` : ""}`,
     });
 
+    const discountMsgPart = validDiscount > 0 ? ` (値引き: -¥${validDiscount.toLocaleString()})` : "";
     return {
       success: true,
-      message: `【${shopName}】商品を販売しました！売上: ¥${totalSaleAmount.toLocaleString()} (手渡し${incentivePercent}%: ¥${incentiveAmount.toLocaleString()} / 金庫入金${storeRemainingPercent}%: ¥${storeRemainingAmount.toLocaleString()})`,
+      message: `【${shopName}】商品を販売しました！売上: ¥${finalSaleAmount.toLocaleString()}${discountMsgPart} (手渡し${incentivePercent}%: ¥${incentiveAmount.toLocaleString()} / 金庫入金${storeRemainingPercent}%: ¥${storeRemainingAmount.toLocaleString()})`,
     };
   };
 
