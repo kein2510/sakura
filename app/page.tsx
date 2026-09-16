@@ -15,6 +15,7 @@ import {
   Radio,
   Undo2,
   Tag,
+  Percent,
 } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import { formatCurrency } from "@/lib/utils";
@@ -398,80 +399,161 @@ export default function MainPage() {
 
             {/* 調整値引き入力パネル (トグルまたは値引き設定時表示) */}
             {(showDiscountForm || validDiscount > 0) && totalItemsCount > 0 && (
-              <div className="pt-3 border-t border-stone-800 bg-stone-950/70 p-3 rounded-xl border border-stone-800/80 space-y-2.5 animate-in fade-in duration-150">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-xs font-black text-amber-400 flex items-center gap-1">
-                      <Tag className="w-3.5 h-3.5" />
-                      調整値引き額:
-                    </span>
-                    <div className="flex items-center gap-1 bg-stone-900 px-2.5 py-1 rounded-xl border border-stone-700">
-                      <span className="text-xs text-stone-400 font-bold">-¥</span>
-                      <input
-                        type="number"
-                        min="0"
-                        max={subtotal}
-                        value={discountAmount === 0 ? "" : discountAmount}
-                        onChange={(e) => setDiscountAmount(Math.max(0, Math.min(subtotal, parseInt(e.target.value) || 0)))}
-                        placeholder="0"
-                        className="w-24 bg-transparent text-amber-300 font-black text-sm focus:outline-none"
-                      />
-                      <span className="text-xs text-stone-500">円</span>
+              <div className="pt-3 border-t border-stone-800 bg-stone-950/85 p-3.5 rounded-2xl border border-stone-800 space-y-3 animate-in fade-in duration-150">
+                {/* 上段: 値引き額の直接入力 & % 入力 & リセット */}
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                  <div className="flex items-center gap-3 flex-wrap">
+                    {/* 円単位の直接入力 */}
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs font-black text-amber-400 flex items-center gap-1">
+                        <Tag className="w-3.5 h-3.5" />
+                        値引き額:
+                      </span>
+                      <div className="flex items-center gap-1 bg-stone-900 px-3 py-1.5 rounded-xl border border-stone-700">
+                        <span className="text-xs text-stone-400 font-bold">-¥</span>
+                        <input
+                          type="number"
+                          min="0"
+                          max={subtotal}
+                          value={discountAmount === 0 ? "" : discountAmount}
+                          onChange={(e) => {
+                            const val = Math.max(0, Math.min(subtotal, parseInt(e.target.value) || 0));
+                            setDiscountAmount(val);
+                          }}
+                          placeholder="0"
+                          className="w-28 bg-transparent text-amber-300 font-black text-base focus:outline-none"
+                        />
+                        <span className="text-xs text-stone-500 font-bold">円</span>
+                      </div>
                     </div>
 
-                    {/* クイック値引きボタン */}
-                    <div className="flex items-center gap-1 flex-wrap">
-                      {subtotal % 100 > 0 && (
-                        <button
-                          type="button"
-                          onClick={() => setDiscountAmount(subtotal % 100)}
-                          className="px-2 py-1 text-[10px] font-bold bg-stone-800 hover:bg-stone-700 text-stone-200 rounded-lg border border-stone-700 cursor-pointer"
-                        >
-                          100円未満切捨 (-¥{(subtotal % 100).toLocaleString()})
-                        </button>
-                      )}
-                      {subtotal % 1000 > 0 && (
-                        <button
-                          type="button"
-                          onClick={() => setDiscountAmount(subtotal % 1000)}
-                          className="px-2 py-1 text-[10px] font-bold bg-stone-800 hover:bg-stone-700 text-stone-200 rounded-lg border border-stone-700 cursor-pointer"
-                        >
-                          1,000円未満切捨 (-¥{(subtotal % 1000).toLocaleString()})
-                        </button>
-                      )}
-                      {[500, 1000, 3000, 5000].map((amt) => (
-                        <button
-                          type="button"
-                          key={amt}
-                          onClick={() => setDiscountAmount((prev) => Math.min(subtotal, prev + amt))}
-                          className="px-2 py-1 text-[10px] font-bold bg-stone-800 hover:bg-stone-700 text-stone-300 hover:text-white rounded-lg border border-stone-700 cursor-pointer"
-                        >
-                          +{amt.toLocaleString()}円
-                        </button>
-                      ))}
-                      {discountAmount > 0 && (
-                        <button
-                          type="button"
-                          onClick={() => { setDiscountAmount(0); setDiscountReason(""); }}
-                          className="px-2 py-1 text-[10px] font-black bg-rose-950/60 hover:bg-rose-900 text-rose-300 rounded-lg border border-rose-800 cursor-pointer"
-                        >
-                          値引き取消 (0円)
-                        </button>
-                      )}
+                    {/* ％での指定入力 */}
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs font-bold text-stone-400 flex items-center gap-1">
+                        <Percent className="w-3.5 h-3.5 text-amber-500" />
+                        割合:
+                      </span>
+                      <div className="flex items-center gap-1 bg-stone-900 px-2.5 py-1.5 rounded-xl border border-stone-700">
+                        <input
+                          type="number"
+                          min="0"
+                          max="100"
+                          value={subtotal > 0 && discountAmount > 0 ? Math.round((discountAmount / subtotal) * 100) : ""}
+                          onChange={(e) => {
+                            const pct = Math.max(0, Math.min(100, parseInt(e.target.value) || 0));
+                            const amt = Math.round(subtotal * (pct / 100));
+                            setDiscountAmount(amt);
+                            if (pct > 0) setDiscountReason(`${pct}% OFF`);
+                          }}
+                          placeholder="0"
+                          className="w-12 bg-transparent text-amber-300 font-black text-sm text-center focus:outline-none"
+                        />
+                        <span className="text-xs text-stone-400 font-bold">% OFF</span>
+                      </div>
                     </div>
+
+                    {discountAmount > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => { setDiscountAmount(0); setDiscountReason(""); }}
+                        className="px-2.5 py-1.5 text-xs font-black bg-rose-950/60 hover:bg-rose-900 text-rose-300 rounded-xl border border-rose-800 transition-all cursor-pointer flex items-center gap-1 shadow-xs"
+                      >
+                        <RotateCcw className="w-3 h-3" />
+                        値引き取消 (0円)
+                      </button>
+                    )}
                   </div>
 
                   <button
                     type="button"
                     onClick={() => setShowDiscountForm(false)}
-                    className="text-[11px] text-stone-400 hover:text-stone-200 self-end sm:self-auto cursor-pointer"
+                    className="text-xs text-stone-400 hover:text-stone-200 self-end md:self-auto cursor-pointer font-medium"
                   >
                     ✕ パネルを閉じる
                   </button>
                 </div>
 
-                {/* 値引き理由・メモ & クイック選択タグ */}
-                <div className="flex flex-col sm:flex-row sm:items-center gap-2 pt-1 border-t border-stone-800/60">
+                {/* 中段①: パーセント(%)クイックボタン */}
+                <div className="flex items-center gap-1.5 flex-wrap pt-2 border-t border-stone-800/60">
+                  <span className="text-[11px] font-black text-stone-400 flex items-center gap-1 shrink-0">
+                    <Percent className="w-3 h-3 text-amber-500" />
+                    ％値引き:
+                  </span>
+                  {[5, 10, 15, 20, 30, 50].map((pct) => {
+                    const amt = Math.round(subtotal * (pct / 100));
+                    const isCurrentPct = subtotal > 0 && discountAmount === amt;
+                    return (
+                      <button
+                        type="button"
+                        key={pct}
+                        onClick={() => {
+                          setDiscountAmount(amt);
+                          setDiscountReason(`${pct}% OFF`);
+                        }}
+                        className={`px-2.5 py-1 text-xs font-black rounded-xl border transition-all cursor-pointer ${
+                          isCurrentPct
+                            ? "bg-amber-500 text-stone-950 border-amber-400 shadow-md scale-105"
+                            : "bg-stone-900 hover:bg-stone-800 text-amber-300 border-stone-700 hover:border-amber-500/50"
+                        }`}
+                      >
+                        {pct}% OFF <span className="text-[10px] font-normal text-stone-400">(-¥{amt.toLocaleString()})</span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* 中段②: 金額加算クイックボタン（クリックするたびに加算！） */}
+                <div className="flex items-center gap-1.5 flex-wrap pt-2 border-t border-stone-800/60">
+                  <span className="text-[11px] font-black text-stone-400 flex items-center gap-1 shrink-0">
+                    <Plus className="w-3 h-3 text-emerald-400" />
+                    金額加算 (押すたび加算):
+                  </span>
+
+                  {/* 端数切捨ボタン */}
+                  {subtotal % 1000 > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const fraction = subtotal % 1000;
+                        setDiscountAmount((prev) => Math.min(subtotal, prev + fraction));
+                        setDiscountReason("千円未満切捨");
+                      }}
+                      className="px-2.5 py-1 text-xs font-black bg-stone-900 hover:bg-stone-800 text-stone-200 hover:text-white rounded-xl border border-stone-700 cursor-pointer shadow-xs transition-all"
+                    >
+                      千円未満切捨 (+¥{(subtotal % 1000).toLocaleString()})
+                    </button>
+                  )}
+                  {subtotal % 10000 > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const fraction = subtotal % 10000;
+                        setDiscountAmount((prev) => Math.min(subtotal, prev + fraction));
+                        setDiscountReason("万円未満切捨");
+                      }}
+                      className="px-2.5 py-1 text-xs font-black bg-stone-900 hover:bg-stone-800 text-stone-200 hover:text-white rounded-xl border border-stone-700 cursor-pointer shadow-xs transition-all"
+                    >
+                      万円未満切捨 (+¥{(subtotal % 10000).toLocaleString()})
+                    </button>
+                  )}
+
+                  {/* 5,000円, 10,000円, 20,000円, 50,000円, 100,000円 */}
+                  {[5000, 10000, 20000, 50000, 100000].map((amt) => (
+                    <button
+                      type="button"
+                      key={amt}
+                      onClick={() => {
+                        setDiscountAmount((prev) => Math.min(subtotal, prev + amt));
+                      }}
+                      className="px-2.5 py-1 text-xs font-black bg-stone-900 hover:bg-stone-800 active:scale-95 text-stone-100 hover:text-amber-300 rounded-xl border border-stone-700 hover:border-amber-500/60 cursor-pointer shadow-xs transition-all"
+                    >
+                      +{amt >= 10000 ? `${amt / 10000}万` : amt.toLocaleString()}円
+                    </button>
+                  ))}
+                </div>
+
+                {/* 下段: 値引き理由・メモ & クイック選択タグ */}
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2 pt-2 border-t border-stone-800/60">
                   <span className="text-[11px] text-stone-400 font-bold shrink-0">値引き理由（任意）:</span>
                   <div className="flex items-center gap-1 flex-wrap">
                     {["端数サービス", "常連様割引", "まとめ買い割", "キャンペーン", "タイムセール"].map((tag) => (
