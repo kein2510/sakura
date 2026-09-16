@@ -1275,9 +1275,22 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const salesCount = userSales.length;
       const itemsSold = sakuraItemsSold + buonViaggioItemsSold;
 
-      const storeRate = storeSettings.storeRemainingRate ?? 70;
-      const storeRemaining70 = Math.round(salesAmount * (storeRate / 100));
-      const incentive30 = salesAmount - storeRemaining70;
+      // 各伝票の販売時点の割合・金額を正確に合算（設定変更で過去伝票が変動しないように固定）
+      let storeRemaining70 = 0;
+      let incentive30 = 0;
+      userSales.forEach((s) => {
+        const amt = s.totalAmount ?? s.total_amount ?? 0;
+        if (s.storeRemainingAmount !== undefined && s.staffIncentiveAmount !== undefined) {
+          storeRemaining70 += s.storeRemainingAmount;
+          incentive30 += s.staffIncentiveAmount;
+        } else {
+          // 過去伝票で未記録のものは、伝票の割合または過去デフォルト70%を固定適用
+          const rate = s.storeRemainingRate ?? 70;
+          const rem = Math.round(amt * (rate / 100));
+          storeRemaining70 += rem;
+          incentive30 += (amt - rem);
+        }
+      });
 
       const userCraftLogs = weekLogs.filter(
         (l) => l.userName === u.displayName && l.category === "craft"
@@ -1422,13 +1435,26 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       };
     });
 
-    const storeRate = storeSettings.storeRemainingRate ?? 70;
     const sakuraSalesTotal = staffStats.reduce((sum, s) => sum + s.sakuraSalesAmount, 0);
-    const sakuraStoreRemaining70 = Math.round(sakuraSalesTotal * (storeRate / 100));
+    const sakuraStoreRemaining70 = weekSales
+      .filter((s) => (s.shopId || "sakura") === "sakura")
+      .reduce((sum, s) => {
+        if (s.storeRemainingAmount !== undefined) return sum + s.storeRemainingAmount;
+        const amt = s.totalAmount ?? s.total_amount ?? 0;
+        const rate = s.storeRemainingRate ?? 70;
+        return sum + Math.round(amt * (rate / 100));
+      }, 0);
     const sakuraIncentive30 = sakuraSalesTotal - sakuraStoreRemaining70;
 
     const bvSalesTotal = staffStats.reduce((sum, s) => sum + s.buonViaggioSalesAmount, 0);
-    const bvStoreRemaining70 = Math.round(bvSalesTotal * (storeRate / 100));
+    const bvStoreRemaining70 = weekSales
+      .filter((s) => s.shopId === "buon_viaggio")
+      .reduce((sum, s) => {
+        if (s.storeRemainingAmount !== undefined) return sum + s.storeRemainingAmount;
+        const amt = s.totalAmount ?? s.total_amount ?? 0;
+        const rate = s.storeRemainingRate ?? 70;
+        return sum + Math.round(amt * (rate / 100));
+      }, 0);
     const bvIncentive30 = bvSalesTotal - bvStoreRemaining70;
 
     const totalSales = staffStats.reduce((sum, s) => sum + s.salesAmount, 0);
@@ -1781,6 +1807,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const finalShopId: ShopId = determinedShopId || "sakura";
     const shopName = finalShopId === "buon_viaggio" ? "Buon viaggio" : "和食さくら";
 
+    // 金庫残高への店舗手元純残り入金 ＆ 販売時点の割合記録
+    const storeRemainingPercent = storeSettings.storeRemainingRate ?? 70;
+    const incentivePercent = 100 - storeRemainingPercent;
+    const storeRemainingAmount = Math.round(totalSaleAmount * (storeRemainingPercent / 100));
+    const incentiveAmount = totalSaleAmount - storeRemainingAmount;
+
     const newSale: Sale = {
       id: `sale-${Date.now().toString().slice(-6)}`,
       shopId: finalShopId,
@@ -1791,16 +1823,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       staff_name: currentUser ? currentUser.displayName : "店員",
       items: saleItemsList,
       created_at: new Date().toISOString(),
+      storeRemainingRate: storeRemainingPercent,
+      storeRemainingAmount: storeRemainingAmount,
+      staffIncentiveAmount: incentiveAmount,
     };
 
     setSales((prev) => [newSale, ...prev]);
     syncSaleToCloud(newSale);
-
-    // 金庫残高への店舗手元純残り入金
-    const storeRemainingPercent = storeSettings.storeRemainingRate ?? 70;
-    const incentivePercent = 100 - storeRemainingPercent;
-    const storeRemainingAmount = Math.round(totalSaleAmount * (storeRemainingPercent / 100));
-    const incentiveAmount = totalSaleAmount - storeRemainingAmount;
 
     if (storeRemainingAmount > 0) {
       setVaultBalance((prev) => {
@@ -1964,8 +1993,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     // 2. 金庫から売上（店舗手元純残り分）を差し引く
     const totalAmount = sale.totalAmount ?? sale.total_amount ?? 0;
-    const storeRemainingPercent = storeSettings.storeRemainingRate ?? 70;
-    const storeRemainingAmount = Math.round(totalAmount * (storeRemainingPercent / 100));
+    const storeRemainingPercent = sale.storeRemainingRate ?? storeSettings.storeRemainingRate ?? 70;
+    const storeRemainingAmount = sale.storeRemainingAmount !== undefined
+      ? sale.storeRemainingAmount
+      : Math.round(totalAmount * (storeRemainingPercent / 100));
 
     if (storeRemainingAmount > 0) {
       setVaultBalance((prev) => {

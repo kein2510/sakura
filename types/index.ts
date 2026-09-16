@@ -110,6 +110,10 @@ export interface Sale {
   totalAmount: number;
   items: SaleItem[];
   created_at: string;
+  // 販売時点の店舗手元純残り・インセンティブ記録（割合設定変更の影響を受けないように固定化）
+  storeRemainingRate?: number;     // 販売時点の店舗手元純残り割合 (%)
+  storeRemainingAmount?: number;   // 販売時点の店舗手元純残り額 (金庫入金分)
+  staffIncentiveAmount?: number;   // 販売時点のスタッフ手渡しインセンティブ額
   // 互換用プロパティ
   total_amount?: number;
   payment_method?: PaymentMethod;

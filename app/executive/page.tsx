@@ -2261,418 +2261,270 @@ export default function ExecutivePage() {
                 return (
                   <div
                     key={stat.userId}
-                    className="bg-stone-900/90 rounded-3xl border border-stone-800 p-6 shadow-xl transition-all space-y-4 text-stone-100"
+                    className="bg-stone-900/60 rounded-2xl border border-stone-800 p-5 shadow-lg space-y-4 text-stone-200"
                   >
-                    {/* スタッフ概要ヘッダー */}
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-stone-800 pb-4">
+                    {/* ① スタッフ概要ヘッダー（シック＆明確） */}
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-stone-800/80 pb-3.5">
                       <div className="flex items-center gap-3">
-                        <div
-                          className={`w-12 h-12 rounded-2xl flex items-center justify-center font-black text-lg ${
-                            stat.role === "executive"
-                              ? "bg-amber-950 text-amber-400 border border-amber-600/40"
-                              : "bg-stone-800 text-stone-300 border border-stone-700"
-                          }`}
-                        >
+                        <div className="w-10 h-10 rounded-xl bg-stone-800 border border-stone-700 flex items-center justify-center text-base shrink-0">
                           {stat.role === "executive" ? "👑" : "👤"}
                         </div>
-
                         <div>
                           <div className="flex items-center gap-2 flex-wrap">
-                            {/* 売上順位バッジ */}
-                            <span
-                              className={`text-[10px] font-black px-2 py-0.5 rounded-md border ${
-                                rankIdx === 0
-                                  ? "bg-amber-500/20 text-amber-300 border-amber-500/40 shadow-xs"
-                                  : rankIdx === 1
-                                  ? "bg-stone-300/20 text-stone-200 border-stone-400/40"
-                                  : rankIdx === 2
-                                  ? "bg-amber-800/20 text-amber-400 border-amber-800/40"
-                                  : "bg-stone-800 text-stone-400 border-stone-700"
-                              }`}
-                            >
-                              {rankIdx === 0
-                                ? "🥇 売上1位"
-                                : rankIdx === 1
-                                ? "🥈 売上2位"
-                                : rankIdx === 2
-                                ? "🥉 売上3位"
-                                : `売上${rankIdx + 1}位`}
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-stone-800 border border-stone-700 text-stone-300">
+                              {rankIdx === 0 ? "🥇 売上1位" : rankIdx === 1 ? "🥈 売上2位" : rankIdx === 2 ? "🥉 売上3位" : `売上${rankIdx + 1}位`}
                             </span>
-
-                            <h3 className="font-extrabold text-base text-white">
+                            <h3 className="font-bold text-base text-white">
                               {stat.displayName}
                             </h3>
-                            <span
-                              className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
-                                stat.role === "executive"
-                                  ? "bg-amber-950/80 text-amber-300 border border-amber-600/40"
-                                  : "bg-stone-800 text-stone-300 border border-stone-700"
-                              }`}
-                            >
-                              {stat.role === "executive" ? "幹部" : "スタッフ"}
+                            <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-stone-800/80 text-stone-400 border border-stone-700/60">
+                              {stat.roleName || (stat.role === "executive" ? "幹部" : "スタッフ")}
                             </span>
-                            <span className="text-xs text-stone-400 font-mono">@{stat.username}</span>
-
-                            {/* 支払いステータス特大バッジ（パッと見で支払済か未払いか分かる！） */}
-                            {stat.remainingDueAmount === 0 ? (
-                              <span className="text-xs font-black px-2.5 py-0.5 rounded-full bg-emerald-950/90 border border-emerald-500/70 text-emerald-300 flex items-center gap-1 shadow-xs">
-                                <CheckCheck className="w-3.5 h-3.5 text-emerald-400" />
-                                ✨ 全額支給完了
-                              </span>
-                            ) : (
-                              <span className="text-xs font-black px-2.5 py-0.5 rounded-full bg-amber-950/90 border border-amber-500/70 text-amber-300 flex items-center gap-1 shadow-xs animate-pulse">
-                                <Clock className="w-3.5 h-3.5 text-amber-400" />
-                                ⏳ 未払いあり (残: {formatCurrency(stat.remainingDueAmount)})
-                              </span>
-                            )}
+                            <span className="text-xs text-stone-500 font-mono">@{stat.username}</span>
                           </div>
-                          <p className="text-[11px] text-stone-400 mt-0.5">
+                          <p className="text-[11px] text-stone-500 mt-0.5">
                             対象期間: {currentWeeklySummary.weekLabel}
                           </p>
                         </div>
                       </div>
 
-                    {/* 右側: 【残りの金額】と【今週の金額】を明確に表示 & 支払状況切り替え */}
-                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-                      {/* ① 今週の決定金額 & 今週分支払いボタン */}
-                      <div className="bg-stone-950 border border-stone-800 p-3 rounded-2xl flex flex-col justify-between min-w-[170px]">
-                        <div className="flex items-center justify-between text-[11px] mb-1">
-                          <span className="font-bold text-stone-400">💴 今週の決定額:</span>
-                          <span className={`text-[10px] font-black px-1.5 py-0.2 rounded ${
-                            stat.isPaid ? "bg-emerald-950 text-emerald-400 border border-emerald-600/40" : "bg-amber-950 text-amber-300 border border-amber-600/40"
-                          }`}>
-                            {stat.isPaid ? "今週分済" : "今週未払"}
+                      {/* ヘッダー右側: 手渡し残額サマリー */}
+                      <div className="flex items-center gap-3 self-start md:self-center">
+                        <div className="text-right">
+                          <span className="text-[10px] text-stone-400 block">スタッフへ手渡す【残り金額】</span>
+                          <span className={`text-xl font-black ${stat.remainingDueAmount === 0 ? "text-emerald-400" : "text-amber-300"}`}>
+                            {stat.remainingDueAmount === 0 ? "¥0 (精算完了)" : formatCurrency(stat.remainingDueAmount)}
                           </span>
                         </div>
-                        <div className="text-xl font-black text-white mb-2">
-                          {formatCurrency(stat.bonusAmount)}
-                        </div>
-
-                        {/* 今週分の支払切替トグルボタン */}
-                        <button
-                          type="button"
-                          onClick={() => toggleBonusPaid(selectedWeekKey, stat.userId, !stat.isPaid)}
-                          className={`w-full px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 shadow-sm cursor-pointer ${
-                            stat.isPaid
-                              ? "bg-emerald-950/80 border border-emerald-500/60 text-emerald-300 hover:bg-emerald-900/80"
-                              : "bg-amber-500 hover:bg-amber-400 text-stone-950 font-extrabold hover:shadow-md hover:scale-[1.01]"
-                          }`}
-                          title={stat.isPaid ? "クリックすると今週分を未払いに戻します" : "クリックすると今週分を支払済みにします（残り金額が即座に減ります）"}
-                        >
-                          {stat.isPaid ? (
-                            <>
-                              <CheckCheck className="w-4 h-4 text-emerald-400" />
-                              <span>今週分: 支払済 ✅ (取消)</span>
-                            </>
-                          ) : (
-                            <>
-                              <Clock className="w-4 h-4" />
-                              <span>今週分を【支払済】にする</span>
-                            </>
-                          )}
-                        </button>
-                      </div>
-
-                      {/* ② スタッフへ手渡す【残り金額】（未払いを支払い済みにすると即座に減る！） */}
-                      <div className={`p-3 rounded-2xl border shadow-sm flex flex-col justify-between min-w-[200px] ${
-                        stat.remainingDueAmount === 0
-                          ? "bg-emerald-950/20 border-emerald-500/50"
-                          : "bg-stone-950 border-amber-500/60 ring-1 ring-amber-500/30"
-                      }`}>
-                        <div className="flex items-center justify-between text-[11px] mb-1">
-                          <span className={`font-black flex items-center gap-1 ${
-                            stat.remainingDueAmount === 0 ? "text-emerald-400" : "text-amber-400"
-                          }`}>
-                            <Coins className="w-3.5 h-3.5" />
-                            手渡す【残り金額】:
+                        {stat.remainingDueAmount === 0 ? (
+                          <span className="text-[10px] font-bold px-2.5 py-1 rounded-lg bg-emerald-950/60 border border-emerald-500/40 text-emerald-300 flex items-center gap-1">
+                            <CheckCheck className="w-3.5 h-3.5" /> 完了
                           </span>
-                          <span className={`text-[9px] font-black px-1.5 py-0.2 rounded ${
-                            stat.remainingDueAmount === 0
-                              ? "bg-emerald-900/60 text-emerald-300"
-                              : "bg-amber-900/80 text-amber-200 animate-pulse"
-                          }`}>
-                            {stat.remainingDueAmount === 0 ? "精算完了" : "要手渡し"}
+                        ) : (
+                          <span className="text-[10px] font-bold px-2.5 py-1 rounded-lg bg-amber-950/60 border border-amber-500/40 text-amber-300 flex items-center gap-1">
+                            <Clock className="w-3.5 h-3.5" /> 要手渡し
                           </span>
-                        </div>
-
-                        {/* 残り金額の特大表示 */}
-                        <div className={`text-2xl font-black ${
-                          stat.remainingDueAmount === 0 ? "text-emerald-400" : "text-amber-400"
-                        }`}>
-                          {stat.remainingDueAmount === 0 ? "¥0 (支給完了 ✨)" : formatCurrency(stat.remainingDueAmount)}
-                        </div>
-
-                        {/* 内訳情報 */}
-                        <div className="text-[10px] mt-1 text-stone-400">
-                          {stat.remainingDueAmount === 0 ? (
-                            <span className="text-emerald-400/90 font-bold">手渡し残額はありません</span>
-                          ) : (
-                            <span>
-                              内訳: 今週未払 {formatCurrency(stat.thisWeekUnpaidAmount)}
-                              {hasPastUnpaid && ` ＋ 過去未払 ${formatCurrency(stat.previousUnpaidBonusTotal)}`}
-                            </span>
-                          )}
-                        </div>
+                        )}
                       </div>
                     </div>
-                  </div>
 
-                  {/* 過去の確定済み未払いボーナスがある場合の合算警告 & 一括精算 */}
-                  {hasPastUnpaid ? (
-                    <div className="p-3.5 rounded-2xl bg-amber-950/30 border border-amber-500/40 space-y-2">
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                        <div className="flex items-center gap-2">
-                          <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
-                          <div>
-                            <span className="text-xs font-bold text-amber-300 block">
-                              過去の確定済み週に未払いが【{stat.previousUnpaidWeeks.length}週分】あります (合算額: +{formatCurrency(stat.previousUnpaidBonusTotal)})
-                            </span>
-                            <span className="text-[10px] text-amber-400/80">
-                              ※精算すると「スタッフへ手渡す残り金額」から即座に差し引かれます
-                            </span>
+                    {/* ② 2カラムメインエリア（左: 活動実績・売上 / 右: 査定決定・支払い） */}
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+                      
+                      {/* === 左カラム: 実績・売上内訳 (5/12 幅) === */}
+                      <div className="lg:col-span-5 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-stone-300 flex items-center gap-1.5">
+                            <Award className="w-3.5 h-3.5 text-amber-400" />
+                            今週の活動実績（判断材料）
+                          </span>
+                          <div className="flex items-center gap-2 text-[10px] text-stone-400">
+                            <span>🌸 {formatCurrency(stat.sakuraSalesAmount)}</span>
+                            <span>🍷 {formatCurrency(stat.buonViaggioSalesAmount)}</span>
                           </div>
                         </div>
 
+                        {/* 実績リスト（整然としたシックなリスト構造、AIネオンカラー全廃） */}
+                        <div className="bg-stone-950/80 rounded-xl border border-stone-800/80 divide-y divide-stone-800/60 text-xs">
+                          {/* 総売上 */}
+                          <div className="p-2.5 flex items-center justify-between">
+                            <div>
+                              <span className="font-medium text-stone-300 block">① 総売上貢献 (100%)</span>
+                              <span className="text-[10px] text-stone-500">伝票 {stat.salesCount}件 / 料理 {stat.itemsSold}個</span>
+                            </div>
+                            <span className="text-sm font-black text-white font-mono">{formatCurrency(stat.salesAmount)}</span>
+                          </div>
+
+                          {/* 手渡し済 */}
+                          <div className="p-2.5 flex items-center justify-between">
+                            <div>
+                              <span className="font-medium text-stone-300 block">② 販売時手渡し済 ({staffIncentiveRate}%)</span>
+                              <span className="text-[10px] text-stone-500">販売時にスタッフ受取済み</span>
+                            </div>
+                            <span className="text-sm font-bold text-stone-300 font-mono">{formatCurrency(stat.incentive30)}</span>
+                          </div>
+
+                          {/* 店舗純手元残り */}
+                          <div className="p-2.5 flex items-center justify-between">
+                            <div>
+                              <span className="font-medium text-amber-300/90 block">③ 店舗純手元残り ({storeRate}%)</span>
+                              <span className="text-[10px] text-stone-500">店舗金庫への実入金額</span>
+                            </div>
+                            <span className="text-sm font-bold text-amber-200 font-mono">{formatCurrency(stat.storeRemaining70)}</span>
+                          </div>
+
+                          {/* クラフト */}
+                          <div className={`p-2.5 flex items-center justify-between ${!storeSettings.enableCrafting ? "opacity-40" : ""}`}>
+                            <div>
+                              <span className="font-medium text-stone-300 block">④ 厨房仕込み (クラフト)</span>
+                              <span className="text-[10px] text-stone-500">仕込み作成: {stat.craftCount}回</span>
+                            </div>
+                            <span className="text-sm font-bold text-stone-200 font-mono">{stat.craftItemsCount} <span className="text-xs text-stone-500 font-normal">品</span></span>
+                          </div>
+
+                          {/* 素材調達 */}
+                          <div className={`p-2.5 flex items-center justify-between ${!storeSettings.enableInventory ? "opacity-40" : ""}`}>
+                            <div>
+                              <span className="font-medium text-stone-300 block">⑤ 素材調達実績</span>
+                              <span className="text-[10px] text-stone-500">手当単価: ¥{ingredientRewardRate}/個</span>
+                            </div>
+                            <span className="text-sm font-bold text-stone-200 font-mono">{stat.ingredientItemsCount.toLocaleString()} <span className="text-xs text-stone-500 font-normal">個</span></span>
+                          </div>
+                        </div>
+
+                        {/* 伝票明細展開ボタン */}
                         <button
                           type="button"
-                          onClick={() => {
-                            if (
-                              confirm(
-                                `「${stat.displayName}」の過去の未払いボーナス（計 ${formatCurrency(
-                                  stat.previousUnpaidBonusTotal
-                                )}）を一括で【支払済】に精算しますか？\n※スタッフへ手渡す残り金額から即座に差し引かれます。`
-                              )
-                            ) {
-                              markAllPastBonusesAsPaid(stat.userId);
-                            }
-                          }}
-                          className="px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-xs transition-colors self-start sm:self-auto cursor-pointer flex items-center gap-1.5"
+                          onClick={() => setExpandedSalesUserId(isExpandedSales ? null : stat.userId)}
+                          className="w-full py-1.5 px-2.5 rounded-lg bg-stone-950 hover:bg-stone-800/80 border border-stone-800/80 text-[11px] text-stone-400 hover:text-stone-200 flex items-center justify-between transition-colors cursor-pointer"
                         >
-                          <CheckCheck className="w-4 h-4" />
-                          <span>過去の未払いを一括で支払済みにする</span>
+                          <span className="flex items-center gap-1.5">
+                            <FileText className="w-3.5 h-3.5 text-stone-400" />
+                            <span>週内売上伝票明細 ({stat.weekSales.length}件)</span>
+                          </span>
+                          <span className="text-stone-500 text-[10px]">{isExpandedSales ? "閉じる ▲" : "確認する ▼"}</span>
                         </button>
                       </div>
 
-                      {/* 未払い週の詳細リスト */}
-                      <div className="flex flex-wrap gap-2 pt-1 border-t border-amber-900/40">
-                        <span className="text-[10px] text-amber-400 font-bold">未払い週内訳:</span>
-                        {stat.previousUnpaidWeeks.map((w) => (
-                          <span
-                            key={w.weekKey}
-                            className="px-2 py-0.5 rounded-md bg-stone-950 border border-amber-500/30 text-[10px] text-amber-200"
-                          >
-                            {w.weekLabel}: <strong>{formatCurrency(w.amount)}</strong>
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="px-3.5 py-2 rounded-xl bg-stone-950/60 border border-stone-800/80 text-[11px] text-stone-400 flex items-center gap-2">
-                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                      <span>過去の確定済みボーナスはすべて精算完了しています (未払い繰越なし)</span>
-                    </div>
-                  )}
+                      {/* === 右カラム: 査定決定・メモ・支払い管理 (7/12 幅) === */}
+                      <div className="lg:col-span-7 space-y-3.5">
+                        {/* 支給決定入力エリア */}
+                        <div className="p-4 rounded-xl bg-stone-950/80 border border-stone-800/80 space-y-3">
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                            <label className="text-xs font-bold text-stone-200">
+                              今週の支給ボーナス決定額:
+                            </label>
+                            <button
+                              type="button"
+                              onClick={() => handleApplyRecommendedToStaff(stat)}
+                              className="text-xs font-semibold text-amber-400 hover:text-amber-300 flex items-center gap-1 cursor-pointer self-start sm:self-auto transition-colors"
+                            >
+                              <Calculator className="w-3.5 h-3.5" />
+                              推奨額 ({formatCurrency(recommended)}) を適用
+                            </button>
+                          </div>
 
-                  {/* 店舗別 売上貢献の内訳（🌸 さくら / 🍷 Buon viaggio） */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-stone-950 p-3.5 rounded-2xl border border-stone-800">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-rose-400 font-bold flex items-center gap-1">
-                        <span>🌸</span> 和食さくら売上:
-                      </span>
-                      <span className="text-white font-black text-sm">
-                        {formatCurrency(stat.sakuraSalesAmount)}{" "}
-                        <span className="text-[10px] text-stone-400 font-normal">({stat.sakuraItemsSold}品)</span>
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between text-xs sm:border-l sm:border-stone-800 sm:pl-3">
-                      <span className="text-purple-400 font-bold flex items-center gap-1">
-                        <span>🍷</span> Buon viaggio売上:
-                      </span>
-                      <span className="text-white font-black text-sm">
-                        {formatCurrency(stat.buonViaggioSalesAmount)}{" "}
-                        <span className="text-[10px] text-stone-400 font-normal">({stat.buonViaggioItemsSold}品)</span>
-                      </span>
-                    </div>
-                  </div>
+                          <div className="flex items-center gap-2">
+                            <div className="relative flex-1">
+                              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-bold text-stone-400">¥</span>
+                              <input
+                                type="number"
+                                min="0"
+                                step="1000"
+                                value={currentInput}
+                                onChange={(e) =>
+                                  setWeeklyBonusInputs({
+                                    ...weeklyBonusInputs,
+                                    [stat.userId]: parseInt(e.target.value, 10) || 0,
+                                  })
+                                }
+                                className="w-full pl-7 pr-3 py-2 bg-stone-900 rounded-xl border border-stone-700 font-bold text-lg text-white focus:border-amber-500 focus:outline-none font-mono"
+                                placeholder="0"
+                              />
+                            </div>
 
-                  {/* 人別 4大実績指標（売上・3割手渡し・7割店舗残り・クラフト数） */}
-                  <div>
-                    <div className="flex items-center gap-1.5 text-xs font-black text-stone-300 mb-2">
-                      <Award className="w-4 h-4 text-amber-500" />
-                      この週の活動実績（査定の判断材料）
-                    </div>
+                            <button
+                              type="button"
+                              onClick={() => handleSaveStaffWeeklyBonus(stat.userId)}
+                              className={`px-4 py-2.5 rounded-xl font-bold text-xs transition-all flex items-center gap-1.5 shadow-sm shrink-0 cursor-pointer ${
+                                isSaved
+                                  ? "bg-emerald-600 text-white"
+                                  : "bg-amber-600 hover:bg-amber-500 text-stone-950 hover:shadow-amber-900/20"
+                              }`}
+                            >
+                              {isSaved ? <Check className="w-4 h-4" /> : <Save className="w-4 h-4" />}
+                              {isSaved ? "保存済" : "保存"}
+                            </button>
+                          </div>
 
-                    <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-                      {/* ① 総売上 (100%) */}
-                      <div className="p-3.5 rounded-2xl bg-stone-950 border border-stone-800">
-                        <span className="text-[11px] font-bold text-stone-400 block">
-                          ① 売上貢献計 (100%)
-                        </span>
-                        <span className="text-lg font-black text-white block mt-1">
-                          {formatCurrency(stat.salesAmount)}
-                        </span>
-                        <span className="text-[10px] text-stone-400 mt-0.5 block">
-                          伝票: {stat.salesCount}件 / 料理 {stat.itemsSold}個
-                        </span>
-                      </div>
+                          {/* 推奨内訳（すっきりした行ベースのインフォバー） */}
+                          <div className="pt-2 border-t border-stone-800/60 text-[11px] text-stone-400 flex flex-wrap items-center gap-x-3 gap-y-1">
+                            <span className="font-semibold text-stone-300">【推奨内訳】</span>
+                            <span>役職手当: <strong className="text-stone-200">{formatCurrency(getStaffRoleAllowance(stat))}</strong></span>
+                            <span>手元残り歩合({storeRemainingBonusRate}%): <strong className="text-stone-200">{formatCurrency(Math.round(stat.storeRemaining70 * (storeRemainingBonusRate / 100)))}</strong></span>
+                            {storeSettings.enableCrafting && stat.craftItemsCount > 0 && (
+                              <span>仕込み: <strong className="text-stone-200">{formatCurrency(stat.craftItemsCount * craftRewardRate)}</strong></span>
+                            )}
+                            {storeSettings.enableInventory && getStaffIngredientCount(stat) > 0 && (
+                              <span>素材: <strong className="text-stone-200">{formatCurrency(getStaffIngredientCount(stat) * ingredientRewardRate)}</strong></span>
+                            )}
+                          </div>
 
-                      {/* ② 手渡しインセンティブ (スタッフ手渡し分) */}
-                      <div className="p-3.5 rounded-2xl bg-amber-950/30 border border-amber-500/30">
-                        <span className="text-[11px] font-bold text-amber-400 block">
-                          ② 手渡し済 ({staffIncentiveRate}%)
-                        </span>
-                        <span className="text-lg font-black text-amber-300 block mt-1">
-                          {formatCurrency(stat.incentive30)}
-                        </span>
-                        <span className="text-[10px] text-amber-400/80 mt-0.5 block">
-                          販売時スタッフ受取済
-                        </span>
-                      </div>
+                          {/* 査定理由・評価メモ */}
+                          <div>
+                            <label className="block text-[11px] font-medium text-stone-400 mb-1">
+                              査定メモ:
+                            </label>
+                            <input
+                              type="text"
+                              value={currentNote}
+                              onChange={(e) =>
+                                setWeeklyBonusNotes({
+                                  ...weeklyBonusNotes,
+                                  [stat.userId]: e.target.value,
+                                })
+                              }
+                              placeholder="査定理由や評価メモを入力..."
+                              className="w-full px-3 py-1.5 bg-stone-900 rounded-lg border border-stone-700 text-xs text-stone-200 placeholder:text-stone-600 focus:border-amber-500 focus:outline-none"
+                            />
+                          </div>
+                        </div>
 
-                      {/* ③ 店舗手元残り (金庫入金分) */}
-                      <div className="p-3.5 rounded-2xl bg-emerald-950/30 border border-emerald-500/30">
-                        <span className="text-[11px] font-bold text-emerald-400 block">
-                          ③ 店舗純手元残り ({storeRate}%)
-                        </span>
-                        <span className="text-lg font-black text-emerald-300 block mt-1">
-                          {formatCurrency(stat.storeRemaining70)}
-                        </span>
-                        <span className="text-[10px] text-emerald-400/80 mt-0.5 block">
-                          店舗側の純利益
-                        </span>
-                      </div>
+                        {/* 支払いステータス & アクションバー */}
+                        <div className="p-3 rounded-xl bg-stone-950/60 border border-stone-800/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                          <div className="space-y-0.5">
+                            <div className="flex items-center gap-2">
+                              <span className="text-stone-400">今週のボーナス支給:</span>
+                              <span className="font-bold text-white font-mono">{formatCurrency(stat.bonusAmount)}</span>
+                              <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded ${
+                                stat.isPaid ? "bg-emerald-950 text-emerald-400 border border-emerald-700/40" : "bg-stone-800 text-stone-400 border border-stone-700"
+                              }`}>
+                                {stat.isPaid ? "支払済" : "未払い"}
+                              </span>
+                            </div>
 
-                      {/* ④ クラフト数 & 在庫調整 */}
-                      <div className={`p-3.5 rounded-2xl ${storeSettings.enableCrafting ? "bg-indigo-950/30 border border-indigo-500/30" : "bg-stone-950 border border-stone-800 opacity-50"}`}>
-                        <span className="text-[11px] font-bold text-indigo-400 block">
-                          ④ 厨房仕込み (クラフト)
-                        </span>
-                        <span className="text-lg font-black text-indigo-300 block mt-1">
-                          {stat.craftItemsCount} <span className="text-xs font-bold text-indigo-400">個</span>
-                        </span>
-                        <span className="text-[10px] text-indigo-400/80 mt-0.5 block">
-                          作成: {stat.craftCount}回
-                        </span>
-                      </div>
+                            {hasPastUnpaid && (
+                              <div className="text-[10px] text-amber-400/90 flex items-center gap-1.5">
+                                <span>過去未払い繰越 ({stat.previousUnpaidWeeks.length}週分): {formatCurrency(stat.previousUnpaidBonusTotal)}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (confirm(`「${stat.displayName}」の過去の未払いボーナス（計 ${formatCurrency(stat.previousUnpaidBonusTotal)}）を一括で【支払済】に精算しますか？`)) {
+                                      markAllPastBonusesAsPaid(stat.userId);
+                                    }
+                                  }}
+                                  className="underline hover:text-amber-300 font-bold cursor-pointer"
+                                >
+                                  [一括精算]
+                                </button>
+                              </div>
+                            )}
+                          </div>
 
-                      {/* ⑤ 素材調達実績 */}
-                      <div className={`p-3.5 rounded-2xl ${storeSettings.enableInventory ? "bg-emerald-950/30 border border-emerald-500/30" : "bg-stone-950 border border-stone-800 opacity-50"}`}>
-                        <span className="text-[11px] font-bold text-emerald-400 block">
-                          ⑤ 素材調達数
-                        </span>
-                        <span className="text-lg font-black text-emerald-300 block mt-1">
-                          {stat.ingredientItemsCount.toLocaleString()} <span className="text-xs font-bold text-emerald-400">個</span>
-                        </span>
-                        <span className="text-[10px] text-emerald-400/80 mt-0.5 block">
-                          手当: ¥{ingredientRewardRate}/個
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* 店主によるボーナス金額決定・メモ入力フォーム */}
-                  <div className="p-4 rounded-2xl bg-stone-950 border border-stone-800 flex flex-col md:flex-row md:items-center justify-between gap-3">
-                    <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-3">
-                      <div>
-                        <div className="flex items-center justify-between mb-1">
-                          <label className="block text-xs font-bold text-stone-300">
-                            今週の支給ボーナス決定額 (¥):
-                          </label>
                           <button
                             type="button"
-                            onClick={() => handleApplyRecommendedToStaff(stat)}
-                            className="text-[11px] font-black text-amber-400 hover:text-amber-300 underline flex items-center gap-0.5 cursor-pointer"
-                            title="試算推奨額を入力欄に反映"
+                            onClick={() => toggleBonusPaid(selectedWeekKey, stat.userId, !stat.isPaid)}
+                            className={`px-3.5 py-1.5 rounded-lg font-bold text-xs transition-all flex items-center justify-center gap-1.5 shrink-0 cursor-pointer ${
+                              stat.isPaid
+                                ? "bg-stone-900 hover:bg-stone-800 text-stone-400 border border-stone-800"
+                                : "bg-stone-800 hover:bg-stone-700 text-stone-200 border border-stone-700"
+                            }`}
                           >
-                            <Calculator className="w-3 h-3" />
-                            推奨額 ({formatCurrency(recommended)}) を反映
+                            {stat.isPaid ? (
+                              <>
+                                <CheckCheck className="w-3.5 h-3.5 text-emerald-400" />
+                                <span>今週分: 支払済 (取消)</span>
+                              </>
+                            ) : (
+                              <>
+                                <Clock className="w-3.5 h-3.5 text-amber-400" />
+                                <span>今週分を支払済にする</span>
+                              </>
+                            )}
                           </button>
                         </div>
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-sm font-bold text-stone-400">¥</span>
-                          <input
-                            type="number"
-                            min="0"
-                            step="1000"
-                            value={currentInput}
-                            onChange={(e) =>
-                              setWeeklyBonusInputs({
-                                ...weeklyBonusInputs,
-                                [stat.userId]: parseInt(e.target.value, 10) || 0,
-                              })
-                            }
-                            className="w-full px-3 py-2 bg-stone-900 rounded-xl border border-stone-700 font-black text-base text-white focus:border-amber-500"
-                            placeholder="例: 35000"
-                          />
-                        </div>
-
-                        {/* 推奨額の計算内訳バッジ */}
-                        <div className="mt-2 flex items-center gap-1.5 flex-wrap text-[10px] text-stone-400">
-                          <span className="font-bold text-amber-400">【推奨内訳】</span>
-                          <span className="bg-stone-900 px-2 py-0.5 rounded-md border border-stone-800 text-stone-300">
-                            役職手当: <strong className="text-amber-300">{formatCurrency(getStaffRoleAllowance(stat))}</strong>
-                            <span className="text-[9px] text-stone-400 ml-1">({stat.roleName || "役職"})</span>
-                          </span>
-                          <span className="bg-stone-900 px-2 py-0.5 rounded-md border border-stone-800 text-stone-300">
-                            手元残り歩合({storeRemainingBonusRate}%): <strong className="text-emerald-300">{formatCurrency(Math.round(stat.storeRemaining70 * (storeRemainingBonusRate / 100)))}</strong>
-                          </span>
-                          {storeSettings.enableCrafting && (
-                            <span className="bg-stone-900 px-2 py-0.5 rounded-md border border-stone-800 text-stone-300">
-                              仕込み手当(¥{craftRewardRate}×{stat.craftItemsCount}品): <strong className="text-indigo-300">{formatCurrency(stat.craftItemsCount * craftRewardRate)}</strong>
-                            </span>
-                          )}
-                          {storeSettings.enableInventory && (
-                            <span className="bg-stone-900 px-2 py-0.5 rounded-md border border-stone-800 text-stone-300">
-                              素材調達手当(¥{ingredientRewardRate}×{getStaffIngredientCount(stat)}個): <strong className="text-emerald-300">{formatCurrency(getStaffIngredientCount(stat) * ingredientRewardRate)}</strong>
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      <div>
-                        <label className="block text-xs font-bold text-stone-300 mb-1">
-                          査定理由・評価メモ:
-                        </label>
-                        <input
-                          type="text"
-                          value={currentNote}
-                          onChange={(e) =>
-                            setWeeklyBonusNotes({
-                              ...weeklyBonusNotes,
-                              [stat.userId]: e.target.value,
-                            })
-                          }
-                          placeholder="例: 寿司の仕込み多数、残り利益からの歩合還元など"
-                          className="w-full px-3 py-2 bg-stone-900 rounded-xl border border-stone-700 text-xs font-semibold text-white placeholder:text-stone-600 focus:border-amber-500"
-                        />
                       </div>
                     </div>
-
-                    {/* 保存ボタン */}
-                    <div className="flex items-center gap-2 self-end md:self-center mt-2 md:mt-0">
-                      <button
-                        type="button"
-                        onClick={() => handleSaveStaffWeeklyBonus(stat.userId)}
-                        className={`px-5 py-2.5 rounded-xl font-black text-xs transition-all flex items-center gap-1.5 shadow-md cursor-pointer ${
-                          isSaved
-                            ? "bg-emerald-600 text-white"
-                            : "bg-amber-600 hover:bg-amber-700 text-white shadow-amber-900/40 hover:scale-[1.02]"
-                        }`}
-                      >
-                        {isSaved ? (
-                          <>
-                            <Check className="w-4 h-4" />
-                            保存完了！
-                          </>
-                        ) : (
-                          <>
-                            <Save className="w-4 h-4" />
-                            このスタッフのボーナスを保存
-                          </>
-                        )}
-                      </button>
-                    </div>
-                  </div>
 
                   {/* 売上伝票の展開トグル */}
                   <div>
