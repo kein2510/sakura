@@ -19,7 +19,7 @@ import { cn } from "@/lib/utils";
 
 export default function Sidebar() {
   const pathname = usePathname();
-  const { currentUser, logout, storeSettings } = useApp();
+  const { currentUser, logout, storeSettings, siteBranding } = useApp();
 
   const isExecutive = currentUser?.role === "executive";
 
@@ -60,15 +60,15 @@ export default function Sidebar() {
       {/* 店舗ヘッダー */}
       <div className="p-5 border-b border-stone-800 bg-stone-950/50">
         <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-2xl bg-stone-900 border border-amber-400/40 p-1 flex items-center justify-center shadow-lg shadow-rose-950/40 shrink-0 overflow-hidden">
+          <div className="w-12 h-12 rounded-2xl bg-stone-900 border border-amber-400/40 p-1 flex items-center justify-center shadow-lg shrink-0 overflow-hidden">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/logo.png" alt="和食さくら" className="w-full h-full object-contain" />
+            <img src={siteBranding.logoUrl || "/logo.png"} alt={siteBranding.siteName} className="w-full h-full object-contain" />
           </div>
           <div>
             <div className="flex items-center gap-1.5">
-              <span className="font-extrabold text-base tracking-wide text-white">和食さくら</span>
+              <span className="font-extrabold text-base tracking-wide text-white">{siteBranding.siteName}</span>
             </div>
-            <p className="text-[11px] text-stone-400">店舗売上・クラフト管理</p>
+            <p className="text-[11px] text-stone-400 truncate max-w-[140px]">{siteBranding.siteSubtitle || "店舗売上・クラフト管理"}</p>
           </div>
         </div>
       </div>

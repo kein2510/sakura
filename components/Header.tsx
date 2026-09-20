@@ -5,7 +5,7 @@ import { Clock, LogOut, User, ShieldCheck } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 
 export default function Header() {
-  const { currentUser, logout, syncStatus } = useApp();
+  const { currentUser, logout, syncStatus, siteBranding } = useApp();
   const [timeString, setTimeString] = useState<string>("");
 
   useEffect(() => {
@@ -31,9 +31,9 @@ export default function Header() {
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 rounded-lg bg-stone-800 border border-amber-400/40 p-0.5 flex items-center justify-center overflow-hidden">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/logo.png" alt="和食さくら" className="w-full h-full object-contain" />
+            <img src={siteBranding.logoUrl || "/logo.png"} alt={siteBranding.siteName} className="w-full h-full object-contain" />
           </div>
-          <span className="font-extrabold text-stone-200 hidden sm:inline">和食さくら</span>
+          <span className="font-extrabold text-stone-200 hidden sm:inline">{siteBranding.siteName}</span>
         </div>
 
         <div className="hidden sm:flex items-center gap-2 font-medium bg-stone-800/80 px-3 py-1 rounded-lg border border-stone-700/60 text-stone-300">

@@ -23,10 +23,28 @@ import { ShopId, SHOPS } from "@/types";
 import { supabase } from "@/lib/supabase";
 
 export default function MainPage() {
-  const { items, products, ingredients, sellProducts, craftProducts, refreshData, rollbackCraftItems, storeSettings } = useApp();
+  const {
+    items,
+    products,
+    ingredients,
+    sellProducts,
+    craftProducts,
+    refreshData,
+    rollbackCraftItems,
+    storeSettings,
+    shops,
+    siteBranding,
+  } = useApp();
 
-  // 現在選択中の店舗 ("sakura" | "buon_viaggio")
-  const [selectedShopId, setSelectedShopId] = useState<ShopId>("sakura");
+  // 現在選択中の店舗
+  const [selectedShopId, setSelectedShopId] = useState<string>("sakura");
+
+  // 有効な店舗が存在する場合、未選択または削除済みの店舗なら先頭の店舗を選択
+  useEffect(() => {
+    if (shops.length > 0 && !shops.some((s) => s.id === selectedShopId)) {
+      setSelectedShopId(shops[0].id);
+    }
+  }, [shops, selectedShopId]);
 
   // 各商品の選択個数ステート { [itemId]: number }
   const [quantities, setQuantities] = useState<{ [itemId: string]: number }>({});
@@ -90,7 +108,13 @@ export default function MainPage() {
     (p) => (p.shopId || "sakura") === selectedShopId
   );
 
-  const currentShopInfo = SHOPS.find((s) => s.id === selectedShopId) || SHOPS[0];
+  const currentShopInfo = shops.find((s) => s.id === selectedShopId) || shops[0] || {
+    id: "sakura",
+    name: "メイン店舗",
+    shortName: "店舗",
+    icon: "🏪",
+    color: "rose",
+  };
 
   // 個数更新
   const handleSetQuantity = (itemId: string, qty: number) => {
@@ -120,7 +144,7 @@ export default function MainPage() {
   };
 
   // 店舗切り替え
-  const handleSwitchShop = (shopId: ShopId) => {
+  const handleSwitchShop = (shopId: string) => {
     if (selectedShopId !== shopId) {
       setSelectedShopId(shopId);
       setQuantities({}); // 店舗が変わったら選択個数はリセット
@@ -224,46 +248,52 @@ export default function MainPage() {
             </div>
           )}
 
-          {/* ① 店舗切り替えセレクター（和食さくら / Buon viaggio） */}
+          {/* ① 店舗切り替えセレクター */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-stone-800/80 pb-2.5">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <span className="text-xs font-black text-stone-400 flex items-center gap-1.5">
                 <Store className="w-4 h-4 text-amber-500" />
                 店舗切り替え:
               </span>
-              <div className="inline-flex p-1 rounded-2xl bg-stone-900 border border-stone-800">
-                <button
-                  type="button"
-                  onClick={() => handleSwitchShop("sakura")}
-                  className={`px-4 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer ${
-                    selectedShopId === "sakura"
-                      ? "bg-rose-600 text-white shadow-md shadow-rose-950/50 scale-[1.02]"
-                      : "text-stone-400 hover:text-white"
-                  }`}
-                >
-                  <span>🌸 和食さくら</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleSwitchShop("buon_viaggio")}
-                  className={`px-4 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer ${
-                    selectedShopId === "buon_viaggio"
+              <div className="inline-flex p-1 rounded-2xl bg-stone-900 border border-stone-800 flex-wrap gap-1">
+                {shops.map((shop) => {
+                  const isSelected = selectedShopId === shop.id;
+                  const c = shop.themeColor || shop.color;
+                  const activeColorClass =
+                    c === "emerald"
                       ? "bg-emerald-600 text-white shadow-md shadow-emerald-950/50 scale-[1.02]"
-                      : "text-stone-400 hover:text-white"
-                  }`}
-                >
-                  <span>🍷 Buon viaggio</span>
-                </button>
+                      : c === "amber"
+                      ? "bg-amber-600 text-white shadow-md shadow-amber-950/50 scale-[1.02]"
+                      : c === "blue"
+                      ? "bg-blue-600 text-white shadow-md shadow-blue-950/50 scale-[1.02]"
+                      : c === "purple"
+                      ? "bg-purple-600 text-white shadow-md shadow-purple-950/50 scale-[1.02]"
+                      : c === "stone"
+                      ? "bg-stone-700 text-white shadow-md shadow-stone-950/50 scale-[1.02]"
+                      : "bg-rose-600 text-white shadow-md shadow-rose-950/50 scale-[1.02]";
+
+                  return (
+                    <button
+                      key={shop.id}
+                      type="button"
+                      onClick={() => handleSwitchShop(shop.id)}
+                      className={`px-4 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer ${
+                        isSelected
+                          ? activeColorClass
+                          : "text-stone-400 hover:text-white hover:bg-stone-800/60"
+                      }`}
+                    >
+                      <span>{shop.icon}</span>
+                      <span>{shop.name}</span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
             <span className="text-[11px] font-bold text-stone-400">
               現在選択中:{" "}
-              <strong
-                className={
-                  selectedShopId === "sakura" ? "text-rose-400 font-black" : "text-emerald-400 font-black"
-                }
-              >
+              <strong className="text-amber-400 font-black">
                 {currentShopInfo.name}
               </strong>{" "}
               ({currentShopProducts.length}商品)
@@ -276,18 +306,16 @@ export default function MainPage() {
               {/* 左側: ロゴ & 合計金額表示 */}
               <div className="flex items-center gap-3 min-w-0 flex-wrap sm:flex-nowrap justify-between sm:justify-start">
                 <div className="flex items-center gap-3 min-w-0">
-                  <div
-                    className={`w-12 h-12 rounded-2xl border p-1 flex items-center justify-center shadow-lg shrink-0 overflow-hidden ${
-                      selectedShopId === "sakura"
-                        ? "bg-stone-950 border-amber-400/40 shadow-rose-950/40"
-                        : "bg-emerald-950 border-emerald-400/40 shadow-emerald-950/40 text-2xl"
-                    }`}
-                  >
-                    {selectedShopId === "sakura" ? (
+                  <div className="w-12 h-12 rounded-2xl border border-stone-800 p-1 flex items-center justify-center shadow-lg shrink-0 overflow-hidden bg-stone-950">
+                    {currentShopInfo.id === "sakura" && siteBranding.logoUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src="/logo.png" alt="和食さくら" className="w-full h-full object-contain" />
+                      <img
+                        src={siteBranding.logoUrl}
+                        alt={currentShopInfo.name}
+                        className="w-full h-full object-contain"
+                      />
                     ) : (
-                      <span>🍷</span>
+                      <span className="text-2xl">{currentShopInfo.icon || "🏪"}</span>
                     )}
                   </div>
 
@@ -298,11 +326,7 @@ export default function MainPage() {
 
                     <div className="flex items-baseline gap-2 whitespace-nowrap">
                       <span className="text-xs font-bold text-stone-400">合計:</span>
-                      <span
-                        className={`text-2xl sm:text-3xl font-black tracking-tight ${
-                          selectedShopId === "sakura" ? "text-rose-400" : "text-emerald-400"
-                        }`}
-                      >
+                      <span className="text-2xl sm:text-3xl font-black tracking-tight text-white">
                         {formatCurrency(finalTotalAmount)}
                       </span>
                       {validDiscount > 0 && (

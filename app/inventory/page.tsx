@@ -24,8 +24,19 @@ import { Item, ShopId, SHOPS } from "@/types";
 import { supabase } from "@/lib/supabase";
 
 export default function InventoryPage() {
-  const { items, products, ingredients, adjustStock, procureIngredient, actionLogs, refreshData, cancelCraftByLog } = useApp();
-  const [selectedTab, setSelectedTab] = useState<"all" | "sakura" | "buon_viaggio" | "ingredient">("all");
+  const {
+    items,
+    products,
+    ingredients,
+    adjustStock,
+    procureIngredient,
+    actionLogs,
+    refreshData,
+    cancelCraftByLog,
+    shops,
+    siteBranding,
+  } = useApp();
+  const [selectedTab, setSelectedTab] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [adjustingItem, setAdjustingItem] = useState<Item | null>(null);
   const [newStockInput, setNewStockInput] = useState<number>(0);
@@ -83,19 +94,13 @@ export default function InventoryPage() {
     };
   }, [refreshData]);
 
-  // 店舗別商品
-  const sakuraProducts = products.filter((p) => (p.shopId || "sakura") === "sakura");
-  const bvProducts = products.filter((p) => p.shopId === "buon_viaggio");
-
   // フィルタリング
   const filteredItems = items.filter((item) => {
     let matchesTab = true;
-    if (selectedTab === "sakura") {
-      matchesTab = item.type === "product" && (item.shopId || "sakura") === "sakura";
-    } else if (selectedTab === "buon_viaggio") {
-      matchesTab = item.type === "product" && item.shopId === "buon_viaggio";
-    } else if (selectedTab === "ingredient") {
+    if (selectedTab === "ingredient") {
       matchesTab = item.type === "ingredient";
+    } else if (selectedTab !== "all") {
+      matchesTab = item.type === "product" && (item.shopId || "sakura") === selectedTab;
     }
     const matchesQuery =
       searchQuery === "" ||
@@ -149,7 +154,7 @@ export default function InventoryPage() {
             </span>
           </div>
           <p className="text-xs text-stone-300 mt-1">
-            「和食さくら」および「Buon viaggio」の全料理商品、およびクラフト用共通原材料の在庫を確認・調整できます
+            全店舗の料理商品、およびクラフト用共通原材料の在庫を確認・調整できます
           </p>
         </div>
       </div>
@@ -162,52 +167,41 @@ export default function InventoryPage() {
         </div>
       )}
 
-      {/* サマリーカード (4分割) */}
+      {/* サマリーカード */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* ① 和食さくら */}
-        <div className="bg-stone-900/90 p-4 rounded-2xl border border-stone-800 shadow-md flex items-center justify-between">
-          <div>
-            <span className="text-xs font-black text-rose-400 flex items-center gap-1.5">
-              <span>🌸</span>
-              和食さくら (料理)
-            </span>
-            <div className="mt-2 text-2xl font-black text-white">
-              {sakuraProducts.length} <span className="text-sm font-normal text-stone-400">品目</span>
+        {/* 各店舗の料理商品サマリー */}
+        {shops.map((shop) => {
+          const shopProds = products.filter((p) => (p.shopId || "sakura") === shop.id);
+          return (
+            <div
+              key={shop.id}
+              className="bg-stone-900/90 p-4 rounded-2xl border border-stone-800 shadow-md flex items-center justify-between"
+            >
+              <div>
+                <span className="text-xs font-black text-amber-400 flex items-center gap-1.5">
+                  <span>{shop.icon}</span>
+                  {shop.name} (料理)
+                </span>
+                <div className="mt-2 text-2xl font-black text-white">
+                  {shopProds.length} <span className="text-sm font-normal text-stone-400">品目</span>
+                </div>
+                <p className="text-[11px] text-stone-300 mt-1 font-medium">
+                  総在庫: <strong className="text-white font-bold">{shopProds.reduce((acc, p) => acc + p.current_stock, 0)}</strong> 個
+                </p>
+              </div>
+              <div className="w-12 h-12 rounded-xl bg-stone-800 border border-stone-700 text-amber-400 flex items-center justify-center font-black text-xl shadow-inner">
+                {shop.icon}
+              </div>
             </div>
-            <p className="text-[11px] text-stone-300 mt-1 font-medium">
-              総在庫: <strong className="text-white font-bold">{sakuraProducts.reduce((acc, p) => acc + p.current_stock, 0)}</strong> 個
-            </p>
-          </div>
-          <div className="w-12 h-12 rounded-xl bg-stone-800 border border-stone-700 text-rose-400 flex items-center justify-center font-black text-xl shadow-inner">
-            🍱
-          </div>
-        </div>
+          );
+        })}
 
-        {/* ② Buon viaggio */}
-        <div className="bg-stone-900/90 p-4 rounded-2xl border border-stone-800 shadow-md flex items-center justify-between">
-          <div>
-            <span className="text-xs font-black text-emerald-400 flex items-center gap-1.5">
-              <span>🍷</span>
-              Buon viaggio (料理)
-            </span>
-            <div className="mt-2 text-2xl font-black text-white">
-              {bvProducts.length} <span className="text-sm font-normal text-stone-400">品目</span>
-            </div>
-            <p className="text-[11px] text-stone-300 mt-1 font-medium">
-              総在庫: <strong className="text-white font-bold">{bvProducts.reduce((acc, p) => acc + p.current_stock, 0)}</strong> 個
-            </p>
-          </div>
-          <div className="w-12 h-12 rounded-xl bg-stone-800 border border-stone-700 text-emerald-400 flex items-center justify-center font-black text-xl shadow-inner">
-            🍕
-          </div>
-        </div>
-
-        {/* ③ 共通素材 */}
+        {/* 共通素材 */}
         <div className="bg-stone-900/90 p-4 rounded-2xl border border-stone-800 shadow-md flex items-center justify-between">
           <div>
             <span className="text-xs font-black text-stone-300 flex items-center gap-1.5">
               <Layers className="w-4 h-4 text-stone-400" />
-              クラフト素材 (2店舗共通)
+              クラフト素材 (全店舗共通)
             </span>
             <div className="mt-2 text-2xl font-black text-white">
               {ingredients.length} <span className="text-sm font-normal text-stone-400">品目</span>
@@ -221,7 +215,7 @@ export default function InventoryPage() {
           </div>
         </div>
 
-        {/* ④ 在庫僅少アラート */}
+        {/* 在庫僅少アラート */}
         <div className="bg-stone-900/90 p-4 rounded-2xl border border-stone-800 shadow-md flex items-center justify-between">
           <div>
             <span className="text-xs font-black text-rose-400 flex items-center gap-1.5">
@@ -254,26 +248,35 @@ export default function InventoryPage() {
           >
             すべて ({items.length})
           </button>
-          <button
-            onClick={() => setSelectedTab("sakura")}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer ${
-              selectedTab === "sakura"
-                ? "bg-rose-600 text-white shadow-xs"
-                : "text-stone-400 hover:text-white"
-            }`}
-          >
-            <span>🌸</span> 和食さくら ({sakuraProducts.length})
-          </button>
-          <button
-            onClick={() => setSelectedTab("buon_viaggio")}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer ${
-              selectedTab === "buon_viaggio"
+          {shops.map((shop) => {
+            const shopProds = products.filter((p) => (p.shopId || "sakura") === shop.id);
+            const isSelected = selectedTab === shop.id;
+            const c = shop.themeColor || shop.color;
+            const activeColorClass =
+              c === "emerald"
                 ? "bg-emerald-600 text-white shadow-xs"
-                : "text-stone-400 hover:text-white"
-            }`}
-          >
-            <span>🍷</span> Buon viaggio ({bvProducts.length})
-          </button>
+                : c === "amber"
+                ? "bg-amber-600 text-white shadow-xs"
+                : c === "blue"
+                ? "bg-blue-600 text-white shadow-xs"
+                : c === "purple"
+                ? "bg-purple-600 text-white shadow-xs"
+                : c === "stone"
+                ? "bg-stone-700 text-white shadow-xs"
+                : "bg-rose-600 text-white shadow-xs";
+
+            return (
+              <button
+                key={shop.id}
+                onClick={() => setSelectedTab(shop.id)}
+                className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer ${
+                  isSelected ? activeColorClass : "text-stone-400 hover:text-white"
+                }`}
+              >
+                <span>{shop.icon}</span> {shop.name} ({shopProds.length})
+              </button>
+            );
+          })}
           <button
             onClick={() => setSelectedTab("ingredient")}
             className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer ${
@@ -335,17 +338,15 @@ export default function InventoryPage() {
 
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5 flex-wrap">
-                      {isProduct ? (
-                        item.shopId === "buon_viaggio" ? (
-                          <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                            🍷 Buon viaggio
+                      {isProduct ? (() => {
+                        const targetShop = shops.find((s) => s.id === (item.shopId || "sakura"));
+                        return (
+                          <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-stone-800 text-amber-300 border border-stone-700 flex items-center gap-1">
+                            <span>{targetShop?.icon || "🏪"}</span>
+                            <span>{targetShop?.name || "店舗商品"}</span>
                           </span>
-                        ) : (
-                          <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-rose-500/20 text-rose-300 border border-rose-500/30">
-                            🌸 和食さくら
-                          </span>
-                        )
-                      ) : (
+                        );
+                      })() : (
                         <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-300 border border-amber-500/20">
                           🥬 共通素材
                         </span>

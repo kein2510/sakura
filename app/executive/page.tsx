@@ -52,6 +52,7 @@ import {
   PieChart,
   ArrowDownWideNarrow,
   Package,
+  Building2,
 } from "lucide-react";
 import Link from "next/link";
 import { useApp } from "@/context/AppContext";
@@ -68,6 +69,8 @@ import {
   StaffWeeklyStat,
   ShopId,
   SHOPS,
+  ShopDefinition,
+  SiteBranding,
   StaffUser,
 } from "@/types";
 import { getRecentWeeks, WeekPeriod, isDateInWeek } from "@/lib/dateUtils";
@@ -85,6 +88,12 @@ export default function ExecutivePage() {
     getStaffPerformances,
     storeSettings,
     updateStoreSettings,
+    shops,
+    addShop,
+    updateShop,
+    deleteShop,
+    siteBranding,
+    updateSiteBranding,
     roles,
     addRole,
     updateRole,
@@ -236,6 +245,35 @@ export default function ExecutivePage() {
   const [statsProductShopFilter, setStatsProductShopFilter] = useState<"all" | "sakura" | "buon_viaggio">("all");
   const [statsProductSort, setStatsProductSort] = useState<"sales" | "count" | "craft" | "stock">("sales");
   const [statsIngredientSort, setStatsIngredientSort] = useState<"procured" | "stock" | "name">("procured");
+
+  // --- サイト屋号 & ブランド設定 state ---
+  const [brandSiteName, setBrandSiteName] = useState(siteBranding.siteName);
+  const [brandSiteSubtitle, setBrandSiteSubtitle] = useState(siteBranding.siteSubtitle);
+  const [brandLogoUrl, setBrandLogoUrl] = useState(siteBranding.logoUrl);
+  const [brandThemeColor, setBrandThemeColor] = useState(siteBranding.themeColor);
+  const [brandSavedNotice, setBrandSavedNotice] = useState(false);
+
+  useEffect(() => {
+    setBrandSiteName(siteBranding.siteName);
+    setBrandSiteSubtitle(siteBranding.siteSubtitle);
+    setBrandLogoUrl(siteBranding.logoUrl);
+    setBrandThemeColor(siteBranding.themeColor);
+  }, [siteBranding]);
+
+  // --- 店舗（ショップ）追加・編集 state ---
+  const [isAddShopModalOpen, setIsAddShopModalOpen] = useState(false);
+  const [newShopName, setNewShopName] = useState("");
+  const [newShopShortName, setNewShopShortName] = useState("");
+  const [newShopIcon, setNewShopIcon] = useState("🏪");
+  const [newShopThemeColor, setNewShopThemeColor] = useState("amber");
+  const [newShopDesc, setNewShopDesc] = useState("");
+
+  const [editingShopId, setEditingShopId] = useState<string | null>(null);
+  const [editShopName, setEditShopName] = useState("");
+  const [editShopShortName, setEditShopShortName] = useState("");
+  const [editShopIcon, setEditShopIcon] = useState("🏪");
+  const [editShopThemeColor, setEditShopThemeColor] = useState("amber");
+  const [editShopDesc, setEditShopDesc] = useState("");
 
   // --- ゲーム内金庫調整 state ---
   const [isVaultModalOpen, setIsVaultModalOpen] = useState(false);
@@ -780,8 +818,85 @@ export default function ExecutivePage() {
     setItemPrice(1000);
     setItemInitialStock(20);
     setItemImageUrl("");
-    const shopLabel = itemType === "product" ? (itemShopId === "buon_viaggio" ? "【Buon viaggio】" : "【和食さくら】") : "【共通素材】";
+    const targetShop = shops.find((s) => s.id === itemShopId);
+    const shopLabel = itemType === "product" ? (targetShop ? `【${targetShop.name}】` : "【商品】") : "【共通素材】";
     alert(`${shopLabel}「${itemName}」を新規登録しました！`);
+  };
+
+  // サイト屋号 & ブランド設定保存ハンドラ
+  const handleSaveBranding = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!brandSiteName.trim()) {
+      alert("サイト屋号（店名）を入力してください。");
+      return;
+    }
+    updateSiteBranding({
+      siteName: brandSiteName.trim(),
+      siteSubtitle: brandSiteSubtitle.trim(),
+      logoUrl: brandLogoUrl.trim() || "/logo.png",
+      themeColor: brandThemeColor,
+    });
+    setBrandSavedNotice(true);
+    setTimeout(() => setBrandSavedNotice(false), 3000);
+  };
+
+  // 新規店舗追加ハンドラ
+  const handleAddShopSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newShopName.trim()) {
+      alert("店舗名を入力してください。");
+      return;
+    }
+    addShop({
+      name: newShopName.trim(),
+      shortName: newShopShortName.trim() || newShopName.trim(),
+      icon: newShopIcon.trim() || "🏪",
+      themeColor: newShopThemeColor,
+      description: newShopDesc.trim(),
+    });
+    setNewShopName("");
+    setNewShopShortName("");
+    setNewShopIcon("🏪");
+    setNewShopThemeColor("amber");
+    setNewShopDesc("");
+    setIsAddShopModalOpen(false);
+    alert(`新店舗「${newShopName.trim()}」を追加しました！`);
+  };
+
+  // 店舗編集開始
+  const handleStartEditShop = (shop: ShopDefinition) => {
+    setEditingShopId(shop.id);
+    setEditShopName(shop.name);
+    setEditShopShortName(shop.shortName);
+    setEditShopIcon(shop.icon);
+    setEditShopThemeColor(shop.themeColor || "amber");
+    setEditShopDesc(shop.description || "");
+  };
+
+  // 店舗編集保存
+  const handleSaveEditShop = (shopId: string) => {
+    if (!editShopName.trim()) {
+      alert("店舗名を入力してください。");
+      return;
+    }
+    updateShop(shopId, {
+      name: editShopName.trim(),
+      shortName: editShopShortName.trim() || editShopName.trim(),
+      icon: editShopIcon.trim() || "🏪",
+      themeColor: editShopThemeColor,
+      description: editShopDesc.trim(),
+    });
+    setEditingShopId(null);
+    alert("店舗情報を更新しました！");
+  };
+
+  // 店舗削除
+  const handleDeleteShopClick = (shop: ShopDefinition) => {
+    if (!confirm(`本当に店舗「${shop.name}」を削除しますか？\n※所属する商品がある場合は削除できません。`)) {
+      return;
+    }
+    const res = deleteShop(shop.id);
+    alert(res.message);
   };
 
   // 4. ログ絞り込み
@@ -827,7 +942,7 @@ export default function ExecutivePage() {
         <div className="flex items-center gap-3">
           <div className="w-14 h-14 rounded-2xl bg-stone-950 border-2 border-amber-500/40 p-1 flex items-center justify-center shadow-lg shrink-0 overflow-hidden">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/logo.png" alt="和食さくら" className="w-full h-full object-contain" />
+            <img src={siteBranding.logoUrl || "/logo.png"} alt={siteBranding.siteName} className="w-full h-full object-contain" />
           </div>
           <div>
             <div className="flex items-center gap-2">
@@ -836,7 +951,7 @@ export default function ExecutivePage() {
               </span>
               <h1 className="text-2xl font-black tracking-tight">幹部専用 管理コンソール</h1>
               <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-amber-400 text-stone-950">
-                和食さくら &amp; Buon viaggio
+                {shops.map((s) => s.name).join(" & ") || siteBranding.siteName}
               </span>
             </div>
             <p className="text-xs text-stone-400 mt-1">
@@ -5119,35 +5234,28 @@ export default function ExecutivePage() {
                   <label className="block text-xs font-bold text-stone-300 mb-1">
                     所属店舗:
                   </label>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setItemShopId("sakura")}
-                      className={`py-2 px-3 rounded-xl text-xs font-bold border transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                        itemShopId === "sakura"
-                          ? "bg-rose-600 text-white border-rose-500 shadow-xs font-black"
-                          : "bg-stone-950 text-stone-400 border-stone-800 hover:text-white"
-                      }`}
-                    >
-                      🌸 和食さくら
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setItemShopId("buon_viaggio")}
-                      className={`py-2 px-3 rounded-xl text-xs font-bold border transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                        itemShopId === "buon_viaggio"
-                          ? "bg-purple-600 text-white border-purple-500 shadow-xs font-black"
-                          : "bg-stone-950 text-stone-400 border-stone-800 hover:text-white"
-                      }`}
-                    >
-                      🍷 Buon viaggio
-                    </button>
+                  <div className="flex flex-wrap gap-2">
+                    {shops.map((s) => (
+                      <button
+                        key={s.id}
+                        type="button"
+                        onClick={() => setItemShopId(s.id)}
+                        className={`py-2 px-3 rounded-xl text-xs font-bold border transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                          itemShopId === s.id
+                            ? "bg-amber-600 text-stone-950 border-amber-500 shadow-xs font-black scale-[1.02]"
+                            : "bg-stone-950 text-stone-400 border-stone-800 hover:text-white"
+                        }`}
+                      >
+                        <span>{s.icon}</span>
+                        <span>{s.name}</span>
+                      </button>
+                    ))}
                   </div>
                 </div>
               ) : (
                 <div className="p-2.5 rounded-xl bg-emerald-950/40 border border-emerald-500/40 text-emerald-300 text-[11px] font-bold flex items-center gap-1.5">
                   <span>🥬</span>
-                  <span>クラフト素材（原材料）は2店舗で共通利用できます</span>
+                  <span>クラフト素材（原材料）は全店舗で共通利用できます</span>
                 </div>
               )}
 
@@ -5267,28 +5375,24 @@ export default function ExecutivePage() {
                 >
                   すべて ({items.length})
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setItemShopFilter("sakura")}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer ${
-                    itemShopFilter === "sakura"
-                      ? "bg-rose-600 text-white shadow-xs"
-                      : "text-stone-400 hover:text-white"
-                  }`}
-                >
-                  🌸 和食さくら ({items.filter((i) => i.type === "product" && (i.shopId || "sakura") === "sakura").length})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setItemShopFilter("buon_viaggio")}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer ${
-                    itemShopFilter === "buon_viaggio"
-                      ? "bg-purple-600 text-white shadow-xs"
-                      : "text-stone-400 hover:text-white"
-                  }`}
-                >
-                  🍷 Buon viaggio ({items.filter((i) => i.type === "product" && i.shopId === "buon_viaggio").length})
-                </button>
+                {shops.map((s) => {
+                  const count = items.filter((i) => i.type === "product" && (i.shopId || shops[0]?.id) === s.id).length;
+                  return (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => setItemShopFilter(s.id)}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer ${
+                        itemShopFilter === s.id
+                          ? "bg-amber-600 text-stone-950 font-black shadow-xs"
+                          : "text-stone-400 hover:text-white"
+                      }`}
+                    >
+                      <span>{s.icon}</span>
+                      <span>{s.name} ({count})</span>
+                    </button>
+                  );
+                })}
                 <button
                   type="button"
                   onClick={() => setItemShopFilter("ingredient")}
@@ -5308,11 +5412,11 @@ export default function ExecutivePage() {
                 .filter((item) => {
                   if (itemShopFilter === "all") return true;
                   if (itemShopFilter === "ingredient") return item.type === "ingredient";
-                  return item.type === "product" && (item.shopId || "sakura") === itemShopFilter;
+                  return item.type === "product" && (item.shopId || shops[0]?.id) === itemShopFilter;
                 })
                 .map((item) => {
                 const isProduct = item.type === "product";
-                const isBuonViaggio = isProduct && item.shopId === "buon_viaggio";
+                const itemShop = shops.find((s) => s.id === item.shopId) || shops[0];
                 const isEditing = editingItemId === item.id;
                 const isChangingImage = changingImageItemId === item.id;
 
@@ -5342,14 +5446,9 @@ export default function ExecutivePage() {
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-1.5 flex-wrap">
                               {isProduct ? (
-                                <span
-                                  className={`text-[9px] font-black px-1.5 py-0.5 rounded border ${
-                                    isBuonViaggio
-                                      ? "bg-purple-950 text-purple-300 border-purple-700"
-                                      : "bg-rose-950 text-rose-300 border-rose-700"
-                                  }`}
-                                >
-                                  {isBuonViaggio ? "🍷 Buon viaggio" : "🌸 和食さくら"}
+                                <span className="text-[9px] font-black px-1.5 py-0.5 rounded border bg-stone-800 text-amber-300 border-amber-500/40 flex items-center gap-1">
+                                  <span>{itemShop?.icon || "🍱"}</span>
+                                  <span>{itemShop?.name || "料理商品"}</span>
                                 </span>
                               ) : (
                                 <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-700">
@@ -5481,11 +5580,14 @@ export default function ExecutivePage() {
                               <label className="block text-[11px] font-bold text-stone-300 mb-0.5">所属店舗:</label>
                               <select
                                 value={editItemShopId}
-                                onChange={(e) => setEditItemShopId(e.target.value as ShopId)}
+                                onChange={(e) => setEditItemShopId(e.target.value)}
                                 className="w-full px-2 py-1 bg-stone-950 rounded-lg border border-stone-700 text-xs font-bold text-white focus:border-amber-500 cursor-pointer"
                               >
-                                <option value="sakura" className="bg-stone-900 text-white">🌸 和食さくら</option>
-                                <option value="buon_viaggio" className="bg-stone-900 text-white">🍷 Buon viaggio</option>
+                                {shops.map((s) => (
+                                  <option key={s.id} value={s.id} className="bg-stone-900 text-white">
+                                    {s.icon} {s.name}
+                                  </option>
+                                ))}
                               </select>
                             </div>
                           )}
@@ -5692,194 +5794,709 @@ export default function ExecutivePage() {
       )}
 
       {/* ========================================================
-          タブ7: ⚙️ 店舗・機能利用設定（クラフト作成 ＆ 在庫管理）
+          タブ7: ⚙️ 店舗・機能利用設定（ブランド・店舗管理・機能ルール）
       ======================================================== */}
       {activeTab === "settings" && (
-        <div className="bg-stone-900/90 rounded-3xl border border-stone-800 p-6 shadow-xl space-y-6 text-stone-100 backdrop-blur-sm">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-stone-800 pb-3">
-            <div>
-              <h2 className="text-base font-black text-white flex items-center gap-2">
-                <Sliders className="w-5 h-5 text-amber-400" />
-                ⚙️ 店舗・機能利用設定（クラフト作成 ＆ 在庫管理をする/しない）
-              </h2>
-              <p className="text-xs text-stone-400 mt-0.5">
-                店舗の運用ルールに合わせて各機能の利用ON/OFFを切り替えます
-              </p>
+        <div className="space-y-6">
+          {/* ====================================================
+              1. 🎨 サイト屋号 & ブランド設定 (新店舗サイト展開用)
+          ==================================================== */}
+          <div className="bg-stone-900/90 rounded-3xl border border-stone-800 p-6 shadow-xl space-y-5 text-stone-100 backdrop-blur-sm">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-stone-800 pb-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="p-1.5 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/30">
+                    <Palette className="w-4 h-4" />
+                  </span>
+                  <h2 className="text-base font-black text-white">
+                    🎨 サイト屋号 &amp; ブランド・テーマカラー設定
+                  </h2>
+                </div>
+                <p className="text-xs text-stone-400 mt-0.5">
+                  別店舗用の新サイトとして運用する際や、サイト全体の看板・ロゴ・テーマ色を一括変更できます
+                </p>
+              </div>
+
+              {brandSavedNotice && (
+                <div className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 animate-bounce">
+                  <Check className="w-4 h-4 text-emerald-400" />
+                  <span>屋号・ブランド設定を保存しました！</span>
+                </div>
+              )}
             </div>
-            <span className="text-[11px] text-stone-500 font-mono">
-              ※設定は即座に販売レジ画面・サイドバーに自動反映されます
-            </span>
+
+            <form onSubmit={handleSaveBranding} className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-stone-300 mb-1">
+                    サイト屋号 (全体の店名):
+                  </label>
+                  <input
+                    type="text"
+                    value={brandSiteName}
+                    onChange={(e) => setBrandSiteName(e.target.value)}
+                    placeholder="例: 和食さくら, Cafe & Bar XX"
+                    className="w-full px-3 py-2 bg-stone-950 rounded-xl border border-stone-700 text-xs font-bold text-white focus:border-amber-500"
+                    required
+                  />
+                  <span className="text-[10px] text-stone-500 mt-0.5 block">
+                    ※ヘッダー・サイドバー・ログイン画面のメイン店名になります
+                  </span>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-stone-300 mb-1">
+                    サブタイトル (キャッチコピー):
+                  </label>
+                  <input
+                    type="text"
+                    value={brandSiteSubtitle}
+                    onChange={(e) => setBrandSiteSubtitle(e.target.value)}
+                    placeholder="例: 店舗管理・売上クラフトシステム"
+                    className="w-full px-3 py-2 bg-stone-950 rounded-xl border border-stone-700 text-xs text-white focus:border-amber-500"
+                  />
+                  <span className="text-[10px] text-stone-500 mt-0.5 block">
+                    ※ログイン画面やサイドバー下に小さく表示されます
+                  </span>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-stone-300 mb-1">
+                    サイトロゴ画像URL:
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={brandLogoUrl}
+                      onChange={(e) => setBrandLogoUrl(e.target.value)}
+                      placeholder="/logo.png または画像URL"
+                      className="flex-1 px-3 py-2 bg-stone-950 rounded-xl border border-stone-700 text-xs text-white focus:border-amber-500"
+                    />
+                    <div className="w-9 h-9 rounded-xl bg-stone-950 border border-stone-700 flex items-center justify-center overflow-hidden shrink-0">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={brandLogoUrl || "/logo.png"}
+                        alt="Preview"
+                        className="w-full h-full object-contain"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* テーマカラー選択パレット */}
+              <div>
+                <label className="block text-xs font-bold text-stone-300 mb-1.5">
+                  メインテーマカラー (アクセント調):
+                </label>
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+                  {[
+                    { id: "amber", name: "琥珀ゴールド", desc: "和風・料亭・シック", bg: "bg-amber-600", border: "border-amber-500" },
+                    { id: "rose", name: "桜・深紅", desc: "和モダン・華やか", bg: "bg-rose-600", border: "border-rose-500" },
+                    { id: "emerald", name: "翡翠グリーン", desc: "茶屋・自然・オーガニック", bg: "bg-emerald-600", border: "border-emerald-500" },
+                    { id: "blue", name: "藍ネイビー", desc: "バー・クール・海鮮", bg: "bg-blue-600", border: "border-blue-500" },
+                    { id: "purple", name: "紫陽花パープル", desc: "高級・イタリアン・妖艶", bg: "bg-purple-600", border: "border-purple-500" },
+                    { id: "stone", name: "漆黒モノトーン", desc: "無骨・シンプル・モダン", bg: "bg-stone-600", border: "border-stone-500" },
+                  ].map((color) => (
+                    <button
+                      key={color.id}
+                      type="button"
+                      onClick={() => setBrandThemeColor(color.id)}
+                      className={`p-2.5 rounded-2xl border text-left transition-all cursor-pointer flex items-center gap-2.5 ${
+                        brandThemeColor === color.id
+                          ? `${color.bg}/20 ${color.border} ring-2 ring-white/20 shadow-md scale-[1.02]`
+                          : "bg-stone-950 border-stone-800 hover:border-stone-700"
+                      }`}
+                    >
+                      <span className={`w-4 h-4 rounded-full ${color.bg} shrink-0`} />
+                      <div className="min-w-0">
+                        <div className="text-xs font-black text-white truncate">{color.name}</div>
+                        <div className="text-[9px] text-stone-400 truncate">{color.desc}</div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="pt-2 flex justify-end">
+                <button
+                  type="submit"
+                  className="px-6 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-stone-950 font-black text-xs shadow-md shadow-amber-950/40 flex items-center gap-2 cursor-pointer transition-all active:scale-95"
+                >
+                  <Save className="w-4 h-4" />
+                  屋号 &amp; ブランド設定を保存する
+                </button>
+              </div>
+            </form>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* ① クラフト作成機能 */}
-            <div className={`p-5 rounded-2xl border transition-all flex items-center justify-between gap-4 ${
-              storeSettings.enableCrafting
-                ? "bg-stone-950 border-emerald-500/50 shadow-xs"
-                : "bg-stone-950/60 border-stone-800 opacity-80"
-            }`}>
-              <div className="flex items-start gap-3">
-                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-xl shrink-0 ${
-                  storeSettings.enableCrafting ? "bg-emerald-950 text-emerald-400 border border-emerald-600/40" : "bg-stone-800 text-stone-500"
-                }`}>
-                  🔨
+          {/* ====================================================
+              2. 🏪 運営店舗（ショップ）の管理 (追加・編集・削除)
+          ==================================================== */}
+          <div className="bg-stone-900/90 rounded-3xl border border-stone-800 p-6 shadow-xl space-y-5 text-stone-100 backdrop-blur-sm">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-stone-800 pb-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="p-1.5 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/30">
+                    <Store className="w-4 h-4" />
+                  </span>
+                  <h2 className="text-base font-black text-white">
+                    🏪 運営店舗（ショップ）の追加・編集・削除
+                  </h2>
+                  <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-stone-800 text-stone-300">
+                    {shops.length}店舗
+                  </span>
                 </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-extrabold text-base text-white">クラフト作成機能</span>
-                    <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full ${
-                      storeSettings.enableCrafting ? "bg-emerald-950 text-emerald-300 border border-emerald-500/50" : "bg-stone-800 text-stone-400"
-                    }`}>
-                      {storeSettings.enableCrafting ? "する (有効中)" : "しない (停止中)"}
-                    </span>
-                  </div>
-                  <p className="text-xs text-stone-400 mt-1 leading-relaxed">
-                    メイン画面での素材消費料理作成。「しない」に設定するとメイン画面の作成ボタンが非表示になり、販売レジ専任になります。
-                  </p>
-                </div>
+                <p className="text-xs text-stone-400 mt-0.5">
+                  サイト内で管理する店舗を追加したり、店名・アイコン・テーマ色を変更・削除できます
+                </p>
               </div>
 
               <button
                 type="button"
-                onClick={() => updateStoreSettings({ enableCrafting: !storeSettings.enableCrafting })}
-                className={`px-4 py-2.5 rounded-xl text-xs font-black transition-all shrink-0 cursor-pointer shadow-md active:scale-95 ${
+                onClick={() => setIsAddShopModalOpen(true)}
+                className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-stone-950 text-xs font-black flex items-center gap-1.5 shadow-md shadow-amber-950/40 cursor-pointer transition-all active:scale-95 shrink-0 self-start sm:self-center"
+              >
+                <Plus className="w-4 h-4" />
+                新規店舗を追加する
+              </button>
+            </div>
+
+            {/* 店舗一覧カード */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {shops.map((shop) => {
+                const isEditing = editingShopId === shop.id;
+                const shopProdCount = items.filter(
+                  (i) => i.type === "product" && (i.shopId || shops[0]?.id) === shop.id
+                ).length;
+
+                return (
+                  <div
+                    key={shop.id}
+                    className={`p-4 rounded-2xl border transition-all ${
+                      isEditing
+                        ? "bg-stone-950 border-amber-500 ring-2 ring-amber-500/30"
+                        : "bg-stone-950/70 border-stone-800 hover:border-stone-700"
+                    }`}
+                  >
+                    {!isEditing ? (
+                      <div className="space-y-3">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className="w-10 h-10 rounded-xl bg-stone-900 border border-stone-700 text-2xl flex items-center justify-center shrink-0">
+                              {shop.icon}
+                            </div>
+                            <div className="min-w-0">
+                              <div className="font-black text-white text-sm truncate flex items-center gap-1.5">
+                                <span>{shop.name}</span>
+                              </div>
+                              <div className="flex items-center gap-1.5 text-[10px] text-stone-400 mt-0.5">
+                                <span className="font-mono px-1.5 py-0.2 rounded bg-stone-800 text-stone-300">
+                                  ID: {shop.id}
+                                </span>
+                                <span>略称: {shop.shortName}</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-stone-800 text-amber-300 border border-stone-700 shrink-0">
+                            料理 {shopProdCount} 品
+                          </span>
+                        </div>
+
+                        {shop.description && (
+                          <p className="text-xs text-stone-400 leading-relaxed bg-stone-900/60 p-2 rounded-xl">
+                            {shop.description}
+                          </p>
+                        )}
+
+                        <div className="pt-2 border-t border-stone-800 flex items-center justify-between text-xs">
+                          <span className="text-[10px] text-stone-500">
+                            テーマ: {shop.themeColor || "amber"}
+                          </span>
+
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => handleStartEditShop(shop)}
+                              className="px-2.5 py-1 rounded-lg bg-stone-800 hover:bg-stone-700 text-stone-300 text-xs font-bold transition-all flex items-center gap-1 cursor-pointer"
+                            >
+                              <Edit2 className="w-3 h-3 text-amber-400" />
+                              編集
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteShopClick(shop)}
+                              disabled={shops.length <= 1}
+                              className="px-2.5 py-1 rounded-lg bg-stone-800 hover:bg-rose-950/50 hover:text-rose-400 text-stone-400 text-xs font-bold transition-all flex items-center gap-1 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+                              title={shops.length <= 1 ? "店舗は最低1つ必要です" : "店舗を削除"}
+                            >
+                              <Trash2 className="w-3 h-3 text-rose-400" />
+                              削除
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      /* 店舗編集フォーム */
+                      <div className="space-y-3">
+                        <div className="text-xs font-black text-amber-400 flex items-center justify-between border-b border-stone-800 pb-2">
+                          <span>店舗情報の変更</span>
+                          <button
+                            type="button"
+                            onClick={() => setEditingShopId(null)}
+                            className="text-stone-400 hover:text-white"
+                          >
+                            ✕
+                          </button>
+                        </div>
+
+                        <div>
+                          <label className="block text-[10px] font-bold text-stone-300 mb-0.5">
+                            店舗名:
+                          </label>
+                          <input
+                            type="text"
+                            value={editShopName}
+                            onChange={(e) => setEditShopName(e.target.value)}
+                            className="w-full px-2.5 py-1.5 bg-stone-900 rounded-lg border border-stone-700 text-xs font-bold text-white focus:border-amber-500"
+                            required
+                          />
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="block text-[10px] font-bold text-stone-300 mb-0.5">
+                              略称:
+                            </label>
+                            <input
+                              type="text"
+                              value={editShopShortName}
+                              onChange={(e) => setEditShopShortName(e.target.value)}
+                              className="w-full px-2.5 py-1.5 bg-stone-900 rounded-lg border border-stone-700 text-xs text-white focus:border-amber-500"
+                              required
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] font-bold text-stone-300 mb-0.5">
+                              アイコン絵文字:
+                            </label>
+                            <input
+                              type="text"
+                              value={editShopIcon}
+                              onChange={(e) => setEditShopIcon(e.target.value)}
+                              className="w-full px-2.5 py-1.5 bg-stone-900 rounded-lg border border-stone-700 text-xs text-center text-white focus:border-amber-500"
+                              required
+                            />
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="block text-[10px] font-bold text-stone-300 mb-0.5">
+                            テーマ色:
+                          </label>
+                          <select
+                            value={editShopThemeColor}
+                            onChange={(e) => setEditShopThemeColor(e.target.value)}
+                            className="w-full px-2.5 py-1.5 bg-stone-900 rounded-lg border border-stone-700 text-xs font-bold text-white focus:border-amber-500 cursor-pointer"
+                          >
+                            <option value="amber">琥珀ゴールド (amber)</option>
+                            <option value="rose">桜ローズ (rose)</option>
+                            <option value="emerald">翡翠グリーン (emerald)</option>
+                            <option value="blue">藍ネイビー (blue)</option>
+                            <option value="purple">紫陽花パープル (purple)</option>
+                            <option value="stone">漆黒モノトーン (stone)</option>
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block text-[10px] font-bold text-stone-300 mb-0.5">
+                            説明:
+                          </label>
+                          <input
+                            type="text"
+                            value={editShopDesc}
+                            onChange={(e) => setEditShopDesc(e.target.value)}
+                            className="w-full px-2.5 py-1.5 bg-stone-900 rounded-lg border border-stone-700 text-xs text-stone-300 focus:border-amber-500"
+                          />
+                        </div>
+
+                        <div className="pt-2 flex items-center justify-end gap-2 border-t border-stone-800">
+                          <button
+                            type="button"
+                            onClick={() => setEditingShopId(null)}
+                            className="px-3 py-1 rounded-lg bg-stone-800 text-stone-400 text-xs font-bold hover:text-white"
+                          >
+                            キャンセル
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleSaveEditShop(shop.id)}
+                            className="px-3 py-1 rounded-lg bg-amber-600 hover:bg-amber-500 text-stone-950 text-xs font-black shadow-xs"
+                          >
+                            保存
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* ====================================================
+              3. ⚙️ 店舗機能ルール & 店舗手元純残り割合
+          ==================================================== */}
+          <div className="bg-stone-900/90 rounded-3xl border border-stone-800 p-6 shadow-xl space-y-6 text-stone-100 backdrop-blur-sm">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-stone-800 pb-3">
+              <div>
+                <h2 className="text-base font-black text-white flex items-center gap-2">
+                  <Sliders className="w-5 h-5 text-amber-400" />
+                  ⚙️ 店舗機能ルール（クラフト作成 ＆ 在庫管理をする/しない）
+                </h2>
+                <p className="text-xs text-stone-400 mt-0.5">
+                  店舗の運用ルールに合わせて各機能の利用ON/OFFを切り替えます
+                </p>
+              </div>
+              <span className="text-[11px] text-stone-500 font-mono">
+                ※設定は即座に販売レジ画面・サイドバーに自動反映されます
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* ① クラフト作成機能 */}
+              <div
+                className={`p-5 rounded-2xl border transition-all flex items-center justify-between gap-4 ${
                   storeSettings.enableCrafting
-                    ? "bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-900/30"
-                    : "bg-stone-800 hover:bg-stone-700 text-stone-300 border border-stone-700"
+                    ? "bg-stone-950 border-emerald-500/50 shadow-xs"
+                    : "bg-stone-950/60 border-stone-800 opacity-80"
                 }`}
               >
-                {storeSettings.enableCrafting ? "する (有効中)" : "しない (停止中)"}
-              </button>
-            </div>
-
-            {/* ② 全体在庫管理機能 */}
-            <div className={`p-5 rounded-2xl border transition-all flex items-center justify-between gap-4 ${
-              storeSettings.enableInventory
-                ? "bg-stone-950 border-indigo-500/50 shadow-xs"
-                : "bg-stone-950/60 border-stone-800 opacity-80"
-            }`}>
-              <div className="flex items-start gap-3">
-                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-xl shrink-0 ${
-                  storeSettings.enableInventory ? "bg-indigo-950 text-indigo-400 border border-indigo-600/40" : "bg-stone-800 text-stone-500"
-                }`}>
-                  📦
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-extrabold text-base text-white">全体在庫管理機能</span>
-                    <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full ${
-                      storeSettings.enableInventory ? "bg-indigo-950 text-indigo-300 border border-indigo-500/50" : "bg-stone-800 text-stone-400"
-                    }`}>
-                      {storeSettings.enableInventory ? "する (有効中)" : "しない (停止中)"}
-                    </span>
-                  </div>
-                  <p className="text-xs text-stone-400 mt-1 leading-relaxed">
-                    全体在庫一覧メニュー。「しない」に設定するとサイドバーの一般アクセスが非表示になり、商品販売時も在庫チェック・減算をスキップして在庫がなくても販売可能になります。
-                  </p>
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => updateStoreSettings({ enableInventory: !storeSettings.enableInventory })}
-                className={`px-4 py-2.5 rounded-xl text-xs font-black transition-all shrink-0 cursor-pointer shadow-md active:scale-95 ${
-                  storeSettings.enableInventory
-                    ? "bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-900/30"
-                    : "bg-stone-800 hover:bg-stone-700 text-stone-300 border border-stone-700"
-                }`}
-              >
-                {storeSettings.enableInventory ? "する (有効中)" : "しない (停止中)"}
-              </button>
-            </div>
-
-            {/* ③ 店舗手元純残りの割合設定 */}
-            <div className="p-5 rounded-2xl border border-amber-500/50 bg-stone-950 shadow-xs md:col-span-2 space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-stone-800 pb-3">
                 <div className="flex items-start gap-3">
-                  <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-xl shrink-0 bg-amber-950 text-amber-400 border border-amber-600/40">
-                    🏦
+                  <div
+                    className={`w-12 h-12 rounded-2xl flex items-center justify-center text-xl shrink-0 ${
+                      storeSettings.enableCrafting
+                        ? "bg-emerald-950 text-emerald-400 border border-emerald-600/40"
+                        : "bg-stone-800 text-stone-500"
+                    }`}
+                  >
+                    🔨
                   </div>
                   <div>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-extrabold text-base text-white">店舗手元純残りの割合設定</span>
-                      <span className="text-[10px] font-black px-2.5 py-0.5 rounded-full bg-amber-950 text-amber-300 border border-amber-500/50">
-                        現在: {storeRate}% (店手元) / {staffIncentiveRate}% (スタッフ手渡し)
+                    <div className="flex items-center gap-2">
+                      <span className="font-extrabold text-base text-white">クラフト作成機能</span>
+                      <span
+                        className={`text-[10px] font-black px-2.5 py-0.5 rounded-full ${
+                          storeSettings.enableCrafting
+                            ? "bg-emerald-950 text-emerald-300 border border-emerald-500/50"
+                            : "bg-stone-800 text-stone-400"
+                        }`}
+                      >
+                        {storeSettings.enableCrafting ? "する (有効中)" : "しない (停止中)"}
                       </span>
                     </div>
                     <p className="text-xs text-stone-400 mt-1 leading-relaxed">
-                      料理販売時に売上総額から<strong>店舗（金庫）に残す割合</strong>を設定します。残りの <strong>{staffIncentiveRate}%</strong> が販売スタッフへ即時手渡しされるインセンティブとなります。ボーナスの歩合還元計算やサマリー表示にも自動連動します。
+                      メイン画面での素材消費料理作成。「しない」に設定するとメイン画面の作成ボタンが非表示になり、販売レジ専任になります。
                     </p>
                   </div>
                 </div>
 
-                {/* 現在の設定値バッジ */}
-                <div className="flex items-center gap-2 self-start sm:self-center bg-stone-900 px-4 py-2 rounded-2xl border border-stone-800 shrink-0">
-                  <span className="text-xs text-stone-400 font-bold">店舗残り:</span>
-                  <span className="text-2xl font-black text-amber-300">{storeRate}%</span>
-                </div>
+                <button
+                  type="button"
+                  onClick={() =>
+                    updateStoreSettings({ enableCrafting: !storeSettings.enableCrafting })
+                  }
+                  className={`px-4 py-2.5 rounded-xl text-xs font-black transition-all shrink-0 cursor-pointer shadow-md active:scale-95 ${
+                    storeSettings.enableCrafting
+                      ? "bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-900/30"
+                      : "bg-stone-800 hover:bg-stone-700 text-stone-300 border border-stone-700"
+                  }`}
+                >
+                  {storeSettings.enableCrafting ? "する (有効中)" : "しない (停止中)"}
+                </button>
               </div>
 
-              {/* スライダー & 数値入力 & クイック選択 */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
-                <div className="md:col-span-2 space-y-2">
-                  <div className="flex items-center justify-between text-xs text-stone-400 font-bold">
-                    <span>0% (全額手渡し)</span>
-                    <span className="text-amber-400 font-black">店舗純手元 {storeRate}% ⇄ 手渡し {staffIncentiveRate}%</span>
-                    <span>100% (全額金庫入金)</span>
+              {/* ② 全体在庫管理機能 */}
+              <div
+                className={`p-5 rounded-2xl border transition-all flex items-center justify-between gap-4 ${
+                  storeSettings.enableInventory
+                    ? "bg-stone-950 border-indigo-500/50 shadow-xs"
+                    : "bg-stone-950/60 border-stone-800 opacity-80"
+                }`}
+              >
+                <div className="flex items-start gap-3">
+                  <div
+                    className={`w-12 h-12 rounded-2xl flex items-center justify-center text-xl shrink-0 ${
+                      storeSettings.enableInventory
+                        ? "bg-indigo-950 text-indigo-400 border border-indigo-600/40"
+                        : "bg-stone-800 text-stone-500"
+                    }`}
+                  >
+                    📦
                   </div>
-                  <input
-                    type="range"
-                    min="0"
-                    max="100"
-                    step="1"
-                    value={storeRate}
-                    onChange={(e) => {
-                      const val = Math.min(100, Math.max(0, parseInt(e.target.value) || 0));
-                      updateStoreSettings({ storeRemainingRate: val });
-                    }}
-                    className="w-full h-2.5 bg-stone-800 rounded-lg appearance-none cursor-pointer accent-amber-500"
-                  />
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-extrabold text-base text-white">全体在庫管理機能</span>
+                      <span
+                        className={`text-[10px] font-black px-2.5 py-0.5 rounded-full ${
+                          storeSettings.enableInventory
+                            ? "bg-indigo-950 text-indigo-300 border border-indigo-500/50"
+                            : "bg-stone-800 text-stone-400"
+                        }`}
+                      >
+                        {storeSettings.enableInventory ? "する (有効中)" : "しない (停止中)"}
+                      </span>
+                    </div>
+                    <p className="text-xs text-stone-400 mt-1 leading-relaxed">
+                      全体在庫一覧メニュー。「しない」に設定するとサイドバーの一般アクセスが非表示になり、商品販売時も在庫チェック・減算をスキップして在庫がなくても販売可能になります。
+                    </p>
+                  </div>
                 </div>
 
-                <div className="flex items-center justify-between md:justify-end gap-2">
-                  <span className="text-xs text-stone-400 font-bold">直接指定:</span>
-                  <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() =>
+                    updateStoreSettings({ enableInventory: !storeSettings.enableInventory })
+                  }
+                  className={`px-4 py-2.5 rounded-xl text-xs font-black transition-all shrink-0 cursor-pointer shadow-md active:scale-95 ${
+                    storeSettings.enableInventory
+                      ? "bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-900/30"
+                      : "bg-stone-800 hover:bg-stone-700 text-stone-300 border border-stone-700"
+                  }`}
+                >
+                  {storeSettings.enableInventory ? "する (有効中)" : "しない (停止中)"}
+                </button>
+              </div>
+
+              {/* ③ 店舗手元純残りの割合設定 */}
+              <div className="p-5 rounded-2xl border border-amber-500/50 bg-stone-950 shadow-xs md:col-span-2 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-stone-800 pb-3">
+                  <div className="flex items-start gap-3">
+                    <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-xl shrink-0 bg-amber-950 text-amber-400 border border-amber-600/40">
+                      🏦
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-extrabold text-base text-white">
+                          店舗手元純残りの割合設定
+                        </span>
+                        <span className="text-[10px] font-black px-2.5 py-0.5 rounded-full bg-amber-950 text-amber-300 border border-amber-500/50">
+                          現在: {storeRate}% (店手元) / {staffIncentiveRate}% (スタッフ手渡し)
+                        </span>
+                      </div>
+                      <p className="text-xs text-stone-400 mt-1 leading-relaxed">
+                        料理販売時に売上総額から<strong>店舗（金庫）に残す割合</strong>を設定します。残りの{" "}
+                        <strong>{staffIncentiveRate}%</strong>{" "}
+                        が販売スタッフへ即時手渡しされるインセンティブとなります。ボーナスの歩合還元計算やサマリー表示にも自動連動します。
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* 現在の設定値バッジ */}
+                  <div className="flex items-center gap-2 self-start sm:self-center bg-stone-900 px-4 py-2 rounded-2xl border border-stone-800 shrink-0">
+                    <span className="text-xs text-stone-400 font-bold">店舗残り:</span>
+                    <span className="text-2xl font-black text-amber-300">{storeRate}%</span>
+                  </div>
+                </div>
+
+                {/* スライダー & 数値入力 & クイック選択 */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+                  <div className="md:col-span-2 space-y-2">
+                    <div className="flex items-center justify-between text-xs text-stone-400 font-bold">
+                      <span>0% (全額手渡し)</span>
+                      <span className="text-amber-400 font-black">
+                        店舗純手元 {storeRate}% ⇄ 手渡し {staffIncentiveRate}%
+                      </span>
+                      <span>100% (全額金庫入金)</span>
+                    </div>
                     <input
-                      type="number"
+                      type="range"
                       min="0"
                       max="100"
-                      step="5"
+                      step="1"
                       value={storeRate}
                       onChange={(e) => {
                         const val = Math.min(100, Math.max(0, parseInt(e.target.value) || 0));
                         updateStoreSettings({ storeRemainingRate: val });
                       }}
-                      className="w-20 px-3 py-1.5 bg-stone-900 rounded-xl border border-stone-700 font-black text-amber-300 text-center text-sm focus:border-amber-500"
+                      className="w-full h-2.5 bg-stone-800 rounded-lg appearance-none cursor-pointer accent-amber-500"
                     />
-                    <span className="text-stone-400 font-bold text-sm">%</span>
                   </div>
 
-                  {/* クイック選択 */}
-                  <div className="flex items-center gap-1">
-                    {[50, 60, 70, 80].map((rate) => (
-                      <button
-                        key={rate}
-                        type="button"
-                        onClick={() => updateStoreSettings({ storeRemainingRate: rate })}
-                        className={`px-2 py-1 rounded-lg text-[10px] font-black transition-all cursor-pointer ${
-                          storeRate === rate
-                            ? "bg-amber-500 text-stone-950 shadow-xs"
-                            : "bg-stone-900 hover:bg-stone-800 text-stone-400 border border-stone-800"
-                        }`}
-                      >
-                        {rate}%
-                      </button>
-                    ))}
+                  <div className="flex items-center justify-between md:justify-end gap-2">
+                    <span className="text-xs text-stone-400 font-bold">直接指定:</span>
+                    <div className="flex items-center gap-1">
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        step="5"
+                        value={storeRate}
+                        onChange={(e) => {
+                          const val = Math.min(100, Math.max(0, parseInt(e.target.value) || 0));
+                          updateStoreSettings({ storeRemainingRate: val });
+                        }}
+                        className="w-20 px-3 py-1.5 bg-stone-900 rounded-xl border border-stone-700 font-black text-amber-300 text-center text-sm focus:border-amber-500"
+                      />
+                      <span className="text-stone-400 font-bold text-sm">%</span>
+                    </div>
+
+                    {/* クイック選択 */}
+                    <div className="flex items-center gap-1">
+                      {[50, 60, 70, 80].map((rate) => (
+                        <button
+                          key={rate}
+                          type="button"
+                          onClick={() => updateStoreSettings({ storeRemainingRate: rate })}
+                          className={`px-2 py-1 rounded-lg text-[10px] font-black transition-all cursor-pointer ${
+                            storeRate === rate
+                              ? "bg-amber-500 text-stone-950 shadow-xs"
+                              : "bg-stone-900 hover:bg-stone-800 text-stone-400 border border-stone-800"
+                          }`}
+                        >
+                          {rate}%
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
           </div>
+
+          {/* ====================================================
+              4. 🏪 新規店舗追加モーダル
+          ==================================================== */}
+          {isAddShopModalOpen && (
+            <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
+              <div className="bg-stone-900 rounded-3xl p-6 max-w-md w-full shadow-2xl border border-stone-800 text-white space-y-4">
+                <div className="flex items-center justify-between border-b border-stone-800 pb-3">
+                  <h2 className="text-base font-black text-white flex items-center gap-2">
+                    <Store className="w-5 h-5 text-amber-400" />
+                    新しい運営店舗を追加
+                  </h2>
+                  <button
+                    type="button"
+                    onClick={() => setIsAddShopModalOpen(false)}
+                    className="text-stone-400 hover:text-white p-1 rounded-lg hover:bg-stone-800 transition-colors cursor-pointer"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <form onSubmit={handleAddShopSubmit} className="space-y-3.5">
+                  <div>
+                    <label className="block text-xs font-bold text-stone-300 mb-1">
+                      店舗名 (正式名称):
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="例: BAR さくら, カフェ・オ・レ, 焼肉 炎"
+                      value={newShopName}
+                      onChange={(e) => setNewShopName(e.target.value)}
+                      className="w-full px-3 py-2 bg-stone-950 rounded-xl border border-stone-700 text-xs font-bold text-white focus:border-amber-500"
+                      required
+                      autoFocus
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <div>
+                      <label className="block text-xs font-bold text-stone-300 mb-1">
+                        略称 (タブ表示用):
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="例: BAR, カフェ, 焼肉"
+                        value={newShopShortName}
+                        onChange={(e) => setNewShopShortName(e.target.value)}
+                        className="w-full px-3 py-2 bg-stone-950 rounded-xl border border-stone-700 text-xs text-white focus:border-amber-500"
+                        required
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-stone-300 mb-1">
+                        アイコン絵文字:
+                      </label>
+                      <div className="flex gap-1.5">
+                        <input
+                          type="text"
+                          value={newShopIcon}
+                          onChange={(e) => setNewShopIcon(e.target.value)}
+                          className="w-14 px-2 py-2 bg-stone-950 rounded-xl border border-stone-700 text-sm text-center text-white focus:border-amber-500"
+                          required
+                        />
+                        {/* クイック絵文字パレット */}
+                        <div className="flex-1 flex gap-1 items-center overflow-x-auto">
+                          {["🍸", "☕", "🍺", "🍣", "🥩", "🍰", "🍷", "🌸"].map((emoji) => (
+                            <button
+                              key={emoji}
+                              type="button"
+                              onClick={() => setNewShopIcon(emoji)}
+                              className="w-7 h-7 rounded-lg bg-stone-800 hover:bg-stone-700 text-xs flex items-center justify-center shrink-0 cursor-pointer"
+                            >
+                              {emoji}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-stone-300 mb-1">
+                      テーマ色:
+                    </label>
+                    <select
+                      value={newShopThemeColor}
+                      onChange={(e) => setNewShopThemeColor(e.target.value)}
+                      className="w-full px-3 py-2 bg-stone-950 rounded-xl border border-stone-700 text-xs font-bold text-white focus:border-amber-500 cursor-pointer"
+                    >
+                      <option value="amber">琥珀ゴールド (amber)</option>
+                      <option value="rose">桜ローズ (rose)</option>
+                      <option value="emerald">翡翠グリーン (emerald)</option>
+                      <option value="blue">藍ネイビー (blue)</option>
+                      <option value="purple">紫陽花パープル (purple)</option>
+                      <option value="stone">漆黒モノトーン (stone)</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-stone-300 mb-1">
+                      説明・取扱商品（任意）:
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="例: 夜営業のカクテル＆おつまみ"
+                      value={newShopDesc}
+                      onChange={(e) => setNewShopDesc(e.target.value)}
+                      className="w-full px-3 py-2 bg-stone-950 rounded-xl border border-stone-700 text-xs text-stone-300 focus:border-amber-500"
+                    />
+                  </div>
+
+                  <div className="pt-2 flex items-center justify-end gap-2 border-t border-stone-800">
+                    <button
+                      type="button"
+                      onClick={() => setIsAddShopModalOpen(false)}
+                      className="px-4 py-2 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-300 text-xs font-bold cursor-pointer"
+                    >
+                      キャンセル
+                    </button>
+                    <button
+                      type="submit"
+                      className="px-5 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-stone-950 text-xs font-black shadow-md flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Plus className="w-4 h-4" />
+                      店舗を追加する
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

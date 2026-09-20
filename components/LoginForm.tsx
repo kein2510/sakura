@@ -5,7 +5,7 @@ import { Lock, User, KeyRound, AlertCircle, ArrowRight, Eye, EyeOff, Shield } fr
 import { useApp } from "@/context/AppContext";
 
 export default function LoginForm() {
-  const { login } = useApp();
+  const { login, siteBranding } = useApp();
   const [username, setUsername] = useState("");
   const [pass, setPass] = useState("");
   const [showPass, setShowPass] = useState(false);
@@ -40,12 +40,12 @@ export default function LoginForm() {
       <div className="relative w-full max-w-md bg-stone-900 border border-stone-800 rounded-3xl shadow-2xl p-8 text-white">
         {/* ロゴ & 正式版タイトル */}
         <div className="text-center mb-6">
-          <div className="w-24 h-24 rounded-full bg-stone-900 border-2 border-amber-400/40 p-2 flex items-center justify-center mx-auto mb-3 shadow-xl shadow-rose-950/50 overflow-hidden">
+          <div className="w-24 h-24 rounded-full bg-stone-900 border-2 border-amber-400/40 p-2 flex items-center justify-center mx-auto mb-3 shadow-xl overflow-hidden">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/logo.png" alt="和食さくら" className="w-full h-full object-contain" />
+            <img src={siteBranding.logoUrl || "/logo.png"} alt={siteBranding.siteName} className="w-full h-full object-contain" />
           </div>
-          <h1 className="text-2xl font-black tracking-tight text-white">和食さくら</h1>
-          <p className="text-xs text-stone-400 mt-1">店舗管理・売上クラフトシステム (正式運用版)</p>
+          <h1 className="text-2xl font-black tracking-tight text-white">{siteBranding.siteName}</h1>
+          <p className="text-xs text-stone-400 mt-1">{siteBranding.siteSubtitle || "店舗管理・売上クラフトシステム (正式運用版)"}</p>
         </div>
 
         {/* エラー表示 */}

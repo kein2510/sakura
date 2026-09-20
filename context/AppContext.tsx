@@ -15,6 +15,10 @@ import {
   StaffWeeklyStat,
   ShopId,
   SHOPS,
+  ShopDefinition,
+  SiteBranding,
+  DEFAULT_BRANDING,
+  DEFAULT_SHOPS,
   StoreSettings,
 } from "@/types";
 import {
@@ -99,6 +103,16 @@ interface AppContextType {
   // 店舗・機能利用設定 (クラフト・在庫管理のする/しない)
   storeSettings: StoreSettings;
   updateStoreSettings: (updates: Partial<StoreSettings>) => void;
+
+  // 運営店舗（ショップ）管理
+  shops: ShopDefinition[];
+  addShop: (shop: Omit<ShopDefinition, "id">) => void;
+  updateShop: (id: string, updates: Partial<ShopDefinition>) => void;
+  deleteShop: (id: string) => { success: boolean; message: string };
+
+  // サイト全体の屋号・ブランド設定
+  siteBranding: SiteBranding;
+  updateSiteBranding: (branding: Partial<SiteBranding>) => void;
 
   // 役職・カスタムロール管理
   roles: CustomRole[];
@@ -380,12 +394,55 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return defaultStoreSettings;
   });
 
+  // 運営店舗（ショップ）一覧
+  const [shops, setShops] = useState<ShopDefinition[]>(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("fivem_sakura_shops");
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        } catch {
+          // ignore
+        }
+      }
+    }
+    return DEFAULT_SHOPS;
+  });
+
+  // サイト全体の屋号・ブランド設定
+  const [siteBranding, setSiteBranding] = useState<SiteBranding>(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("fivem_sakura_site_branding");
+      if (saved) {
+        try {
+          return { ...DEFAULT_BRANDING, ...JSON.parse(saved) };
+        } catch {
+          // ignore
+        }
+      }
+    }
+    return DEFAULT_BRANDING;
+  });
+
   // ローカル永続化 (オフラインバックアップ用)
   useEffect(() => {
     if (typeof window !== "undefined") {
       localStorage.setItem("fivem_sakura_store_settings", JSON.stringify(storeSettings));
     }
   }, [storeSettings]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      localStorage.setItem("fivem_sakura_shops", JSON.stringify(shops));
+    }
+  }, [shops]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      localStorage.setItem("fivem_sakura_site_branding", JSON.stringify(siteBranding));
+    }
+  }, [siteBranding]);
 
   // ローカル永続化 (オフラインバックアップ用)
   useEffect(() => {
@@ -725,6 +782,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             setUsers(row.value);
           } else if (row.key === "store_settings" && row.value) {
             setStoreSettings((prev) => ({ ...prev, ...row.value }));
+          } else if (row.key === "shops" && Array.isArray(row.value) && row.value.length > 0) {
+            setShops(row.value);
+          } else if (row.key === "site_branding" && row.value) {
+            setSiteBranding((prev) => ({ ...prev, ...row.value }));
           }
         });
       }
@@ -898,6 +959,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             setUsers(row.value);
           } else if (row.key === "store_settings" && row.value) {
             setStoreSettings((prev) => ({ ...prev, ...row.value }));
+          } else if (row.key === "shops" && Array.isArray(row.value) && row.value.length > 0) {
+            setShops(row.value);
+          } else if (row.key === "site_branding" && row.value) {
+            setSiteBranding((prev) => ({ ...prev, ...row.value }));
           }
         }
       )
@@ -1067,6 +1132,78 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       category: "role",
       title: "店舗機能設定の更新",
       detail: `機能設定を更新しました (クラフト作成: ${updates.enableCrafting !== undefined ? (updates.enableCrafting ? "有効" : "停止") : "維持"}, 在庫管理: ${updates.enableInventory !== undefined ? (updates.enableInventory ? "有効" : "停止") : "維持"})`,
+    });
+  };
+
+  // 運営店舗（ショップ）の追加
+  const addShop = (shopData: Omit<ShopDefinition, "id">) => {
+    const id = "shop_" + Date.now().toString().slice(-6);
+    const newShop: ShopDefinition = {
+      ...shopData,
+      id,
+    };
+    const nextShops = [...shops, newShop];
+    setShops(nextShops);
+    syncStateToCloud("shops", nextShops);
+    logAction({
+      category: "product",
+      title: `新しい店舗「${newShop.name}」を追加`,
+      detail: `ID: ${id}, 略称: ${newShop.shortName}, アイコン: ${newShop.icon}, テーマ: ${newShop.themeColor}`,
+    });
+  };
+
+  // 運営店舗（ショップ）の編集
+  const updateShop = (id: string, updates: Partial<ShopDefinition>) => {
+    const nextShops = shops.map((s) => (s.id === id ? { ...s, ...updates } : s));
+    setShops(nextShops);
+    syncStateToCloud("shops", nextShops);
+    logAction({
+      category: "product",
+      title: `店舗「${updates.name || id}」の設定を更新`,
+      detail: `更新項目: ${Object.keys(updates).join(", ")}`,
+    });
+  };
+
+  // 運営店舗（ショップ）の削除
+  const deleteShop = (id: string): { success: boolean; message: string } => {
+    if (shops.length <= 1) {
+      return { success: false, message: "店舗は最低1つ以上必要です。最後の店舗は削除できません。" };
+    }
+    const targetShop = shops.find((s) => s.id === id);
+    if (!targetShop) {
+      return { success: false, message: "指定された店舗が見つかりません。" };
+    }
+
+    const prodCount = items.filter((p) => p.type === "product" && p.shopId === id).length;
+    if (prodCount > 0) {
+      return {
+        success: false,
+        message: `店舗「${targetShop.name}」には登録商品が ${prodCount} 品存在します。先に商品の店舗を変更するか削除してください。`,
+      };
+    }
+
+    const nextShops = shops.filter((s) => s.id !== id);
+    setShops(nextShops);
+    syncStateToCloud("shops", nextShops);
+    logAction({
+      category: "product",
+      title: `店舗「${targetShop.name}」を削除`,
+      detail: `削除された店舗ID: ${id}`,
+    });
+    return { success: true, message: `店舗「${targetShop.name}」を削除しました。` };
+  };
+
+  // サイト全体の屋号 & ブランド設定の更新
+  const updateSiteBranding = (updates: Partial<SiteBranding>) => {
+    setSiteBranding((prev) => {
+      const next = { ...prev, ...updates };
+      syncStateToCloud("site_branding", next);
+      return next;
+    });
+    logAction({
+      category: "recipe",
+      title: "サイト屋号・ブランド設定を更新",
+      detail: `屋号: ${updates.siteName || siteBranding.siteName}, テーマ色: ${updates.themeColor || siteBranding.themeColor}`,
     });
   };
 
@@ -2382,6 +2519,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         getStaffPerformances,
         storeSettings,
         updateStoreSettings,
+        shops,
+        addShop,
+        updateShop,
+        deleteShop,
+        siteBranding,
+        updateSiteBranding,
         roles,
         addRole,
         updateRole,

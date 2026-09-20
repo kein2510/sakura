@@ -42,32 +42,53 @@ export interface RecipeRequirement {
   unit?: string;           // 単位 (個, 本など)
 }
 
-export type ShopId = "sakura" | "buon_viaggio";
+export type ShopId = string;
 
 export interface ShopDefinition {
   id: ShopId;
   name: string;
   shortName: string;
   icon: string;
-  themeColor: string;
+  themeColor: string; // "amber" | "rose" | "emerald" | "blue" | "purple" | "stone"
+  color?: string;     // alias for themeColor
+  logoUrl?: string;
+  description?: string;
 }
 
-export const SHOPS: ShopDefinition[] = [
+export interface SiteBranding {
+  siteName: string;       // サイト全体の屋号 (例: "和食さくら")
+  siteSubtitle: string;   // サブタイトル (例: "店舗管理・売上クラフトシステム (正式運用版)")
+  logoUrl: string;        // サイトロゴURL (例: "/logo.png")
+  themeColor: string;     // メインテーマカラー ("amber" | "rose" | "emerald" | "blue" | "purple" | "stone")
+}
+
+export const DEFAULT_BRANDING: SiteBranding = {
+  siteName: "和食さくら",
+  siteSubtitle: "店舗管理・売上クラフトシステム (正式運用版)",
+  logoUrl: "/logo.png",
+  themeColor: "amber",
+};
+
+export const DEFAULT_SHOPS: ShopDefinition[] = [
   {
     id: "sakura",
     name: "和食さくら",
     shortName: "さくら",
     icon: "🌸",
-    themeColor: "rose",
+    themeColor: "amber",
+    description: "和食・寿司・仕込み料理",
   },
   {
     id: "buon_viaggio",
     name: "Buon viaggio",
     shortName: "Buon viaggio",
     icon: "🍷",
-    themeColor: "emerald",
+    themeColor: "rose",
+    description: "イタリアン・洋食・ピザ・パスタ",
   },
 ];
+
+export const SHOPS: ShopDefinition[] = DEFAULT_SHOPS;
 
 export interface Item {
   id: string;

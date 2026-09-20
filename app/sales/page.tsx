@@ -33,7 +33,7 @@ import { getSunday, getSaturday } from "@/lib/dateUtils";
 type PeriodType = "today" | "week" | "month" | "all" | "custom";
 
 export default function SalesPage() {
-  const { sales, items, users, refreshData, cancelSale } = useApp();
+  const { sales, items, users, refreshData, cancelSale, shops, siteBranding } = useApp();
 
   // 期間フィルター ("today" | "week" | "month" | "all" | "custom")
   const [periodType, setPeriodType] = useState<PeriodType>("today");
@@ -351,8 +351,12 @@ export default function SalesPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-stone-900/90 border border-stone-800 p-5 rounded-3xl shadow-xl">
         <div className="flex items-center gap-3">
           <div className="w-12 h-12 rounded-2xl bg-stone-950 border border-amber-400/40 p-1 flex items-center justify-center shadow-lg shrink-0 overflow-hidden">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/logo.png" alt="和食さくら" className="w-full h-full object-contain" />
+            {siteBranding.logoUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={siteBranding.logoUrl} alt={siteBranding.siteName} className="w-full h-full object-contain" />
+            ) : (
+              <span className="text-2xl">🏪</span>
+            )}
           </div>
           <div>
             <div className="flex items-center gap-2">
@@ -727,15 +731,14 @@ export default function SalesPage() {
                         <span className="text-xs font-bold text-white truncate">
                           {prod.name}
                         </span>
-                        <span
-                          className={`text-[9px] px-1.5 py-0.2 rounded font-black ${
-                            prod.shopId === "buon_viaggio"
-                              ? "bg-emerald-500/20 text-emerald-300"
-                              : "bg-rose-500/20 text-rose-300"
-                          }`}
-                        >
-                          {prod.shopId === "buon_viaggio" ? "🍷BV" : "🌸さくら"}
-                        </span>
+                        {(() => {
+                          const sInfo = shops.find((s) => s.id === (prod.shopId || "sakura"));
+                          return (
+                            <span className="text-[9px] px-1.5 py-0.2 rounded font-black bg-stone-800 text-amber-300 border border-stone-700">
+                              {sInfo ? `${sInfo.icon} ${sInfo.shortName}` : "🏪"}
+                            </span>
+                          );
+                        })()}
                       </div>
                       <span className="text-[10px] text-stone-400 block mt-0.5">
                         販売数: <strong className="text-white">{prod.count}</strong> 点
@@ -772,7 +775,7 @@ export default function SalesPage() {
 
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 flex-wrap">
             {/* 店舗フィルター */}
-            <div className="flex items-center gap-1 bg-stone-950 p-1 rounded-2xl border border-stone-800">
+            <div className="flex items-center gap-1 bg-stone-950 p-1 rounded-2xl border border-stone-800 flex-wrap">
               <button
                 type="button"
                 onClick={() => setSelectedShopFilter("all")}
@@ -784,28 +787,35 @@ export default function SalesPage() {
               >
                 全店舗
               </button>
-              <button
-                type="button"
-                onClick={() => setSelectedShopFilter("sakura")}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                  selectedShopFilter === "sakura"
-                    ? "bg-rose-600 text-white shadow-xs"
-                    : "text-stone-400 hover:text-white"
-                }`}
-              >
-                🌸 さくら
-              </button>
-              <button
-                type="button"
-                onClick={() => setSelectedShopFilter("buon_viaggio")}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                  selectedShopFilter === "buon_viaggio"
+              {shops.map((shop) => {
+                const isSelected = selectedShopFilter === shop.id;
+                const c = shop.themeColor || shop.color;
+                const activeColorClass =
+                  c === "emerald"
                     ? "bg-emerald-600 text-white shadow-xs"
-                    : "text-stone-400 hover:text-white"
-                }`}
-              >
-                🍷 Buon viaggio
-              </button>
+                    : c === "amber"
+                    ? "bg-amber-600 text-white shadow-xs"
+                    : c === "blue"
+                    ? "bg-blue-600 text-white shadow-xs"
+                    : c === "purple"
+                    ? "bg-purple-600 text-white shadow-xs"
+                    : c === "stone"
+                    ? "bg-stone-700 text-white shadow-xs"
+                    : "bg-rose-600 text-white shadow-xs";
+
+                return (
+                  <button
+                    key={shop.id}
+                    type="button"
+                    onClick={() => setSelectedShopFilter(shop.id)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer ${
+                      isSelected ? activeColorClass : "text-stone-400 hover:text-white"
+                    }`}
+                  >
+                    <span>{shop.icon}</span> {shop.name}
+                  </button>
+                );
+              })}
             </div>
 
             {/* 決済種別 */}
@@ -881,7 +891,7 @@ export default function SalesPage() {
             </div>
           ) : (
             finalFilteredSales.map((sale) => {
-              const isBV = sale.shopId === "buon_viaggio";
+              const targetShop = shops.find((s) => s.id === (sale.shopId || "sakura"));
               const amount = sale.totalAmount ?? sale.total_amount ?? 0;
 
               return (
@@ -895,14 +905,9 @@ export default function SalesPage() {
                         #{sale.id}
                       </span>
                       {/* 店舗バッジ */}
-                      <span
-                        className={`text-[10px] font-black px-2 py-0.5 rounded-md border ${
-                          isBV
-                            ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/30"
-                            : "bg-rose-500/20 text-rose-300 border border-rose-500/30"
-                        }`}
-                      >
-                        {isBV ? "🍷 Buon viaggio" : "🌸 和食さくら"}
+                      <span className="text-[10px] font-black px-2 py-0.5 rounded-md border bg-stone-800 text-amber-300 border-stone-700 flex items-center gap-1">
+                        <span>{targetShop?.icon || "🏪"}</span>
+                        <span>{targetShop?.name || "店舗"}</span>
                       </span>
                       {/* 担当者 */}
                       <span className="text-[11px] font-black px-2 py-0.5 rounded-md bg-stone-800 text-stone-300 border border-stone-700 flex items-center gap-1">
@@ -948,7 +953,7 @@ export default function SalesPage() {
                           className="px-2.5 py-1 rounded-xl bg-stone-900 border border-stone-800 text-[11px] font-semibold text-stone-300"
                         >
                           {it.itemName || it.item_name}{" "}
-                          <strong className={isBV ? "text-emerald-400 font-bold" : "text-rose-400 font-bold"}>
+                          <strong className="text-amber-400 font-bold">
                             ×{it.quantity}
                           </strong>
                         </span>
@@ -973,22 +978,14 @@ export default function SalesPage() {
                           <div className="text-[10px] text-amber-400 font-black">
                             値引 -¥{sale.discountAmount.toLocaleString()}
                           </div>
-                          <span
-                            className={`text-lg sm:text-xl font-black block tracking-tight ${
-                              isBV ? "text-emerald-400" : "text-rose-400"
-                            }`}
-                          >
+                          <span className="text-lg sm:text-xl font-black block tracking-tight text-white">
                             {formatCurrency(amount)}
                           </span>
                         </div>
                       ) : (
                         <div>
                           <span className="text-[10px] text-stone-400 block">売上金額</span>
-                          <span
-                            className={`text-lg sm:text-xl font-black ${
-                              isBV ? "text-emerald-400" : "text-rose-400"
-                            }`}
-                          >
+                          <span className="text-lg sm:text-xl font-black text-white">
                             {formatCurrency(amount)}
                           </span>
                         </div>
