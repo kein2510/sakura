@@ -16,10 +16,12 @@ import {
 } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import { cn } from "@/lib/utils";
+import { getThemeStyles } from "@/lib/theme";
 
 export default function Sidebar() {
   const pathname = usePathname();
   const { currentUser, logout, storeSettings, siteBranding } = useApp();
+  const theme = getThemeStyles(siteBranding.themeColor);
 
   const isExecutive = currentUser?.role === "executive";
 
@@ -60,7 +62,7 @@ export default function Sidebar() {
       {/* 店舗ヘッダー */}
       <div className="p-5 border-b border-stone-800 bg-stone-950/50">
         <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-2xl bg-stone-900 border border-amber-400/40 p-1 flex items-center justify-center shadow-lg shrink-0 overflow-hidden">
+          <div className={`w-12 h-12 rounded-2xl bg-stone-900 border ${theme.accentBorder} p-1 flex items-center justify-center shadow-lg shrink-0 overflow-hidden`}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={siteBranding.logoUrl || "/logo.png"} alt={siteBranding.siteName} className="w-full h-full object-contain" />
           </div>
@@ -90,7 +92,7 @@ export default function Sidebar() {
               className={cn(
                 "group flex items-center justify-between p-3 rounded-2xl text-xs font-semibold transition-all duration-200 border",
                 isActive
-                  ? "bg-rose-600/90 text-white border-rose-500 shadow-md shadow-rose-900/40"
+                  ? theme.sidebarActive
                   : "bg-stone-800/40 text-stone-300 border-stone-800/60 hover:bg-stone-800 hover:text-white hover:border-stone-700",
                 isLocked && !isActive && "opacity-50"
               )}
@@ -100,9 +102,9 @@ export default function Sidebar() {
                   className={cn(
                     "p-2 rounded-xl transition-colors",
                     isActive
-                      ? "bg-white/10 text-white"
+                      ? "bg-black/15 text-inherit"
                       : item.isExecutiveOnly
-                      ? "bg-amber-500/10 text-amber-400"
+                      ? theme.accentText
                       : "bg-stone-700/50 text-stone-400"
                   )}
                 >
@@ -112,7 +114,7 @@ export default function Sidebar() {
                   <div className="font-bold flex items-center gap-1.5">
                     <span>{item.name}</span>
                     {item.isExecutiveOnly && (
-                      <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-400/20 text-amber-300 border border-amber-400/30">
+                      <span className={cn("text-[9px] px-1.5 py-0.2 rounded font-bold border", theme.accentBadge)}>
                         幹部
                       </span>
                     )}

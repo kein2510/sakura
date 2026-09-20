@@ -3,10 +3,12 @@
 import React, { useState, useEffect } from "react";
 import { Clock, LogOut, User, ShieldCheck } from "lucide-react";
 import { useApp } from "@/context/AppContext";
+import { getThemeStyles } from "@/lib/theme";
 
 export default function Header() {
   const { currentUser, logout, syncStatus, siteBranding } = useApp();
   const [timeString, setTimeString] = useState<string>("");
+  const theme = getThemeStyles(siteBranding.themeColor);
 
   useEffect(() => {
     const update = () => {
@@ -29,7 +31,7 @@ export default function Header() {
       {/* 左側: 店舗ステータス & ロゴ */}
       <div className="flex items-center gap-2 sm:gap-3 text-xs flex-wrap">
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-stone-800 border border-amber-400/40 p-0.5 flex items-center justify-center overflow-hidden">
+          <div className={`w-8 h-8 rounded-lg bg-stone-800 border ${theme.accentBorder} p-0.5 flex items-center justify-center overflow-hidden shadow-xs`}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={siteBranding.logoUrl || "/logo.png"} alt={siteBranding.siteName} className="w-full h-full object-contain" />
           </div>
@@ -71,7 +73,7 @@ export default function Header() {
           <span
             className={`text-[9px] px-1.5 py-0.2 rounded font-bold ${
               currentUser?.role === "executive"
-                ? "bg-amber-400/20 text-amber-300 border border-amber-400/30"
+                ? theme.accentBadge
                 : "bg-emerald-400/20 text-emerald-300 border border-emerald-400/30"
             }`}
           >

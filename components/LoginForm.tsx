@@ -3,9 +3,12 @@
 import React, { useState } from "react";
 import { Lock, User, KeyRound, AlertCircle, ArrowRight, Eye, EyeOff, Shield } from "lucide-react";
 import { useApp } from "@/context/AppContext";
+import { getThemeStyles } from "@/lib/theme";
+import { cn } from "@/lib/utils";
 
 export default function LoginForm() {
   const { login, siteBranding } = useApp();
+  const theme = getThemeStyles(siteBranding.themeColor);
   const [username, setUsername] = useState("");
   const [pass, setPass] = useState("");
   const [showPass, setShowPass] = useState(false);
@@ -33,14 +36,14 @@ export default function LoginForm() {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-stone-950 p-4">
       {/* 背景エフェクト */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none opacity-20">
-        <div className="absolute -top-40 -left-40 w-96 h-96 rounded-full bg-rose-600 blur-3xl" />
-        <div className="absolute -bottom-40 -right-40 w-96 h-96 rounded-full bg-amber-600 blur-3xl" />
+        <div className="absolute -top-40 -left-40 w-96 h-96 rounded-full bg-stone-700 blur-3xl" />
+        <div className="absolute -bottom-40 -right-40 w-96 h-96 rounded-full bg-stone-700 blur-3xl" />
       </div>
 
       <div className="relative w-full max-w-md bg-stone-900 border border-stone-800 rounded-3xl shadow-2xl p-8 text-white">
         {/* ロゴ & 正式版タイトル */}
         <div className="text-center mb-6">
-          <div className="w-24 h-24 rounded-full bg-stone-900 border-2 border-amber-400/40 p-2 flex items-center justify-center mx-auto mb-3 shadow-xl overflow-hidden">
+          <div className={`w-24 h-24 rounded-full bg-stone-900 border-2 ${theme.accentBorder} p-2 flex items-center justify-center mx-auto mb-3 shadow-xl overflow-hidden`}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={siteBranding.logoUrl || "/logo.png"} alt={siteBranding.siteName} className="w-full h-full object-contain" />
           </div>
@@ -68,7 +71,10 @@ export default function LoginForm() {
               placeholder="ユーザー名を入力"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              className="w-full bg-stone-800/80 border border-stone-700 rounded-xl px-4 py-3 text-sm text-white placeholder-stone-500 focus:outline-none focus:border-rose-500 focus:ring-1 focus:ring-rose-500 transition-all font-medium"
+              className={cn(
+                "w-full bg-stone-800/80 border border-stone-700 rounded-xl px-4 py-3 text-sm text-white placeholder-stone-500 focus:outline-none transition-all font-medium",
+                theme.focusRing
+              )}
               autoFocus
               required
             />
@@ -85,7 +91,10 @@ export default function LoginForm() {
                 placeholder="パスワードを入力"
                 value={pass}
                 onChange={(e) => setPass(e.target.value)}
-                className="w-full bg-stone-800/80 border border-stone-700 rounded-xl pl-4 pr-11 py-3 text-sm text-white placeholder-stone-500 focus:outline-none focus:border-rose-500 focus:ring-1 focus:ring-rose-500 transition-all font-medium tracking-wider"
+                className={cn(
+                  "w-full bg-stone-800/80 border border-stone-700 rounded-xl pl-4 pr-11 py-3 text-sm text-white placeholder-stone-500 focus:outline-none transition-all font-medium tracking-wider",
+                  theme.focusRing
+                )}
                 required
               />
               <button
@@ -103,7 +112,10 @@ export default function LoginForm() {
           <button
             type="submit"
             disabled={isLoading}
-            className="w-full py-3.5 rounded-xl bg-rose-700 hover:bg-rose-600 active:scale-98 disabled:opacity-50 disabled:cursor-not-allowed font-bold text-sm text-white shadow-md shadow-rose-950/40 transition-all duration-200 flex items-center justify-center gap-2 cursor-pointer mt-4"
+            className={cn(
+              "w-full py-3.5 rounded-xl active:scale-98 disabled:opacity-50 disabled:cursor-not-allowed font-bold text-sm transition-all duration-200 flex items-center justify-center gap-2 cursor-pointer mt-4",
+              theme.loginBtn
+            )}
           >
             <span>{isLoading ? "認証中..." : "店舗システムにログイン"}</span>
             <ArrowRight className="w-4 h-4" />
