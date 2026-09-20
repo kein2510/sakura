@@ -48,6 +48,10 @@ import {
   Hammer,
   Boxes,
   RotateCcw,
+  BarChart3,
+  PieChart,
+  ArrowDownWideNarrow,
+  Package,
 } from "lucide-react";
 import Link from "next/link";
 import { useApp } from "@/context/AppContext";
@@ -66,7 +70,7 @@ import {
   SHOPS,
   StaffUser,
 } from "@/types";
-import { getRecentWeeks, WeekPeriod } from "@/lib/dateUtils";
+import { getRecentWeeks, WeekPeriod, isDateInWeek } from "@/lib/dateUtils";
 
 export default function ExecutivePage() {
   const {
@@ -108,7 +112,7 @@ export default function ExecutivePage() {
     refreshData,
   } = useApp();
 
-  const [activeTab, setActiveTab] = useState<"summary" | "users" | "roles" | "bonus" | "recipes" | "items" | "logs" | "settings">("summary");
+  const [activeTab, setActiveTab] = useState<"summary" | "statistics" | "users" | "roles" | "bonus" | "recipes" | "items" | "logs" | "settings">("summary");
   const [realtimeNotice, setRealtimeNotice] = useState<string | null>(null);
 
   // 幹部ページの Supabase Realtime サブスクリプション
@@ -224,6 +228,14 @@ export default function ExecutivePage() {
   const [recipeShopFilter, setRecipeShopFilter] = useState<string>("all");
   const [itemShopFilter, setItemShopFilter] = useState<string>("all");
   const [logFilter, setLogFilter] = useState<string>("all");
+
+  // --- 詳細統計・アナリティクス state ---
+  const [statsPeriod, setStatsPeriod] = useState<string>("all"); // "all", "current", "last", or weekKey
+  const [statsView, setStatsView] = useState<"all" | "staff" | "products" | "ingredients" | "stores">("all");
+  const [statsStaffSort, setStatsStaffSort] = useState<"sales" | "craft" | "ingredient" | "count" | "remaining">("sales");
+  const [statsProductShopFilter, setStatsProductShopFilter] = useState<"all" | "sakura" | "buon_viaggio">("all");
+  const [statsProductSort, setStatsProductSort] = useState<"sales" | "count" | "craft" | "stock">("sales");
+  const [statsIngredientSort, setStatsIngredientSort] = useState<"procured" | "stock" | "name">("procured");
 
   // --- ゲーム内金庫調整 state ---
   const [isVaultModalOpen, setIsVaultModalOpen] = useState(false);
@@ -883,6 +895,18 @@ export default function ExecutivePage() {
         </button>
 
         <button
+          onClick={() => setActiveTab("statistics")}
+          className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 cursor-pointer ${
+            activeTab === "statistics"
+              ? "bg-amber-600 text-stone-950 shadow-md font-black scale-[1.02]"
+              : "bg-stone-900/90 text-stone-300 hover:bg-stone-800 hover:text-white border border-stone-800"
+          }`}
+        >
+          <BarChart3 className="w-4 h-4 text-amber-500" />
+          📈 詳細統計一覧
+        </button>
+
+        <button
           onClick={() => setActiveTab("users")}
           className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 cursor-pointer ${
             activeTab === "users"
@@ -1384,7 +1408,19 @@ export default function ExecutivePage() {
                 <Sparkles className="w-3.5 h-3.5 text-amber-500" />
                 幹部管理メニュー・クイックアクセス
               </h3>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                <button
+                  onClick={() => setActiveTab("statistics")}
+                  className="p-3.5 bg-stone-950/60 hover:bg-stone-800 border border-stone-800 rounded-2xl text-left transition-all group cursor-pointer"
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <BarChart3 className="w-4 h-4 text-amber-500 group-hover:scale-110 transition-transform" />
+                    <ArrowRight className="w-3.5 h-3.5 text-stone-600 group-hover:text-amber-400" />
+                  </div>
+                  <div className="text-xs font-black text-stone-200 group-hover:text-white">詳細統計一覧</div>
+                  <div className="text-[10px] text-stone-500 mt-0.5">全スタッフ・料理・素材分析</div>
+                </button>
+
                 <button
                   onClick={() => setActiveTab("bonus")}
                   className="p-3.5 bg-stone-950/60 hover:bg-stone-800 border border-stone-800 rounded-2xl text-left transition-all group cursor-pointer"
@@ -1434,6 +1470,1462 @@ export default function ExecutivePage() {
                 </button>
               </div>
             </div>
+          </div>
+        );
+      })()}
+
+      {/* ========================================================
+          タブ0.5: 📈 詳細統計一覧（スタッフ・商品・素材・店舗 それぞれの統計）
+      ======================================================== */}
+      {activeTab === "statistics" && (() => {
+        // 1. 期間フィルタリング
+        const activeWeekObj =
+          statsPeriod === "all"
+            ? null
+            : statsPeriod === "current"
+            ? availableWeeks[0]
+            : statsPeriod === "last"
+            ? availableWeeks[1]
+            : availableWeeks.find((w) => w.weekKey === statsPeriod);
+
+        const filteredSales = sales.filter((s) => {
+          if (!activeWeekObj) return true;
+          return isDateInWeek(s.created_at, activeWeekObj.startDate, activeWeekObj.endDate);
+        });
+
+        const filteredLogs = actionLogs.filter((l) => {
+          if (!activeWeekObj) return true;
+          return isDateInWeek(l.created_at, activeWeekObj.startDate, activeWeekObj.endDate);
+        });
+
+        // 全体サマリー値
+        const totalSalesAmount = filteredSales.reduce(
+          (sum, s) => sum + (s.totalAmount ?? s.total_amount ?? 0),
+          0
+        );
+        const totalSalesCount = filteredSales.length;
+        const totalSoldItems = filteredSales.reduce(
+          (sum, s) => sum + (s.items || []).reduce((iSum, it) => iSum + (it.quantity || 0), 0),
+          0
+        );
+        const avgOrderAmount = totalSalesCount > 0 ? Math.round(totalSalesAmount / totalSalesCount) : 0;
+
+        const sakuraSales = filteredSales.filter((s) => (s.shopId || "sakura") === "sakura");
+        const buonSales = filteredSales.filter((s) => s.shopId === "buon_viaggio");
+        const sakuraTotalAmount = sakuraSales.reduce((sum, s) => sum + (s.totalAmount ?? s.total_amount ?? 0), 0);
+        const buonTotalAmount = buonSales.reduce((sum, s) => sum + (s.totalAmount ?? s.total_amount ?? 0), 0);
+        const sakuraItemsSold = sakuraSales.reduce((sum, s) => sum + (s.items || []).reduce((iSum, it) => iSum + (it.quantity || 0), 0), 0);
+        const buonItemsSold = buonSales.reduce((sum, s) => sum + (s.items || []).reduce((iSum, it) => iSum + (it.quantity || 0), 0), 0);
+
+        let totalStoreRemaining = 0;
+        let totalIncentive = 0;
+        let totalDiscountAmount = 0;
+        let totalDiscountCount = 0;
+
+        filteredSales.forEach((s) => {
+          const amt = s.totalAmount ?? s.total_amount ?? 0;
+          if (s.storeRemainingAmount !== undefined && s.staffIncentiveAmount !== undefined) {
+            totalStoreRemaining += s.storeRemainingAmount;
+            totalIncentive += s.staffIncentiveAmount;
+          } else {
+            const rate = s.storeRemainingRate ?? 70;
+            const rem = Math.round(amt * (rate / 100));
+            totalStoreRemaining += rem;
+            totalIncentive += amt - rem;
+          }
+          const disc = s.discountAmount ?? 0;
+          if (disc > 0) {
+            totalDiscountAmount += disc;
+            totalDiscountCount += 1;
+          }
+        });
+
+        // クラフト仕込みログ集計
+        const craftLogs = filteredLogs.filter((l) => l.category === "craft");
+        let totalCraftCount = 0;
+        craftLogs.forEach((l) => {
+          const matches = Array.from(l.title.matchAll(/×(\d+)/g));
+          if (matches.length > 0) {
+            for (const m of matches) {
+              totalCraftCount += parseInt(m[1]) || 1;
+            }
+          } else {
+            totalCraftCount += 1;
+          }
+        });
+
+        // 素材調達ログ集計
+        const inventoryLogs = filteredLogs.filter((l) => l.category === "inventory");
+        let totalIngredientCount = 0;
+        inventoryLogs.forEach((l) => {
+          const itemMatch = l.title.match(/\((.+?)\)/);
+          const itemName = itemMatch ? itemMatch[1] : "";
+          const targetItem = items.find((it) => it.name === itemName);
+          const isIngredient = targetItem
+            ? targetItem.type === "ingredient"
+            : l.detail.includes("素材") ||
+              l.detail.includes("仕入") ||
+              l.title.includes("素材") ||
+              l.title.includes("調達");
+
+          if (isIngredient) {
+            const isAdjustmentOnly =
+              l.title.includes("棚卸し") ||
+              l.detail.includes("棚卸し") ||
+              l.detail.includes("数合わせ") ||
+              (l.title.includes("手動調整") &&
+                !l.detail.includes("クイック補充") &&
+                !l.detail.includes("調達") &&
+                !l.detail.includes("納品"));
+            if (isAdjustmentOnly) return;
+
+            const quickMatch = l.detail.match(/クイック補充\s*\(\+(\d+)\)/);
+            if (quickMatch) {
+              totalIngredientCount += parseInt(quickMatch[1], 10) || 0;
+              return;
+            }
+            const procureMatch = l.detail.match(/\+(\d+)/);
+            if (l.title.includes("調達") || l.detail.includes("調達") || l.detail.includes("納品")) {
+              if (procureMatch) {
+                totalIngredientCount += parseInt(procureMatch[1], 10) || 0;
+                return;
+              }
+            }
+            const qtyMatch = l.detail.match(/在庫数(?:を)?\s*(\d+)\s*→\s*(\d+)/);
+            if (qtyMatch) {
+              const before = parseInt(qtyMatch[1], 10) || 0;
+              const after = parseInt(qtyMatch[2], 10) || 0;
+              if (after > before) {
+                totalIngredientCount += after - before;
+              }
+            }
+          }
+        });
+
+        // ----------------------------------------------------
+        // A. スタッフ別集計
+        // ----------------------------------------------------
+        const staffStatsList = users.map((u) => {
+          const userSales = filteredSales.filter(
+            (s) => s.staffUserId === u.id || s.staffName === u.displayName || s.staff_name === u.displayName
+          );
+          const salesAmount = userSales.reduce(
+            (sum, s) => sum + (s.totalAmount ?? s.total_amount ?? 0),
+            0
+          );
+          const sakuraAmt = userSales
+            .filter((s) => (s.shopId || "sakura") === "sakura")
+            .reduce((sum, s) => sum + (s.totalAmount ?? s.total_amount ?? 0), 0);
+          const buonAmt = userSales
+            .filter((s) => s.shopId === "buon_viaggio")
+            .reduce((sum, s) => sum + (s.totalAmount ?? s.total_amount ?? 0), 0);
+          const salesCount = userSales.length;
+          const itemsSold = userSales.reduce(
+            (sum, s) => sum + (s.items || []).reduce((iSum, it) => iSum + (it.quantity || 0), 0),
+            0
+          );
+          const avgOrder = salesCount > 0 ? Math.round(salesAmount / salesCount) : 0;
+
+          let storeRemaining = 0;
+          let incentive = 0;
+          let discountAmount = 0;
+          let discountCount = 0;
+          userSales.forEach((s) => {
+            const amt = s.totalAmount ?? s.total_amount ?? 0;
+            if (s.storeRemainingAmount !== undefined && s.staffIncentiveAmount !== undefined) {
+              storeRemaining += s.storeRemainingAmount;
+              incentive += s.staffIncentiveAmount;
+            } else {
+              const rate = s.storeRemainingRate ?? 70;
+              const rem = Math.round(amt * (rate / 100));
+              storeRemaining += rem;
+              incentive += amt - rem;
+            }
+            const disc = s.discountAmount ?? 0;
+            if (disc > 0) {
+              discountAmount += disc;
+              discountCount += 1;
+            }
+          });
+
+          // クラフト数
+          const userCraftLogs = filteredLogs.filter(
+            (l) => l.userName === u.displayName && l.category === "craft"
+          );
+          let craftCount = 0;
+          userCraftLogs.forEach((l) => {
+            const matches = Array.from(l.title.matchAll(/×(\d+)/g));
+            if (matches.length > 0) {
+              for (const m of matches) {
+                craftCount += parseInt(m[1]) || 1;
+              }
+            } else {
+              craftCount += 1;
+            }
+          });
+
+          // 素材調達数
+          const userInventoryLogs = filteredLogs.filter(
+            (l) =>
+              (l.userName === u.displayName || l.userName === u.username) &&
+              l.category === "inventory"
+          );
+          let ingredientCount = 0;
+          userInventoryLogs.forEach((l) => {
+            const itemMatch = l.title.match(/\((.+?)\)/);
+            const itemName = itemMatch ? itemMatch[1] : "";
+            const targetItem = items.find((it) => it.name === itemName);
+            const isIngredient = targetItem
+              ? targetItem.type === "ingredient"
+              : l.detail.includes("素材") ||
+                l.detail.includes("仕入") ||
+                l.title.includes("素材") ||
+                l.title.includes("調達");
+
+            if (isIngredient) {
+              const isAdjustmentOnly =
+                l.title.includes("棚卸し") ||
+                l.detail.includes("棚卸し") ||
+                l.detail.includes("数合わせ") ||
+                (l.title.includes("手動調整") &&
+                  !l.detail.includes("クイック補充") &&
+                  !l.detail.includes("調達") &&
+                  !l.detail.includes("納品"));
+              if (isAdjustmentOnly) return;
+
+              const quickMatch = l.detail.match(/クイック補充\s*\(\+(\d+)\)/);
+              if (quickMatch) {
+                ingredientCount += parseInt(quickMatch[1], 10) || 0;
+                return;
+              }
+              const procureMatch = l.detail.match(/\+(\d+)/);
+              if (l.title.includes("調達") || l.detail.includes("調達") || l.detail.includes("納品")) {
+                if (procureMatch) {
+                  ingredientCount += parseInt(procureMatch[1], 10) || 0;
+                  return;
+                }
+              }
+              const qtyMatch = l.detail.match(/在庫数(?:を)?\s*(\d+)\s*→\s*(\d+)/);
+              if (qtyMatch) {
+                const before = parseInt(qtyMatch[1], 10) || 0;
+                const after = parseInt(qtyMatch[2], 10) || 0;
+                if (after > before) {
+                  ingredientCount += after - before;
+                }
+              }
+            }
+          });
+
+          return {
+            userId: u.id,
+            username: u.username,
+            displayName: u.displayName,
+            roleName: u.roleName || (u.role === "executive" ? "幹部" : "スタッフ"),
+            isExecutive: u.role === "executive",
+            salesAmount,
+            sakuraAmount: sakuraAmt,
+            buonAmount: buonAmt,
+            salesCount,
+            itemsSold,
+            avgOrder,
+            craftCount,
+            ingredientCount,
+            storeRemaining,
+            incentive,
+            discountAmount,
+            discountCount,
+          };
+        });
+
+        // ソート
+        const sortedStaffStats = [...staffStatsList].sort((a, b) => {
+          if (statsStaffSort === "sales") return b.salesAmount - a.salesAmount;
+          if (statsStaffSort === "craft") return b.craftCount - a.craftCount;
+          if (statsStaffSort === "ingredient") return b.ingredientCount - a.ingredientCount;
+          if (statsStaffSort === "count") return b.salesCount - a.salesCount;
+          if (statsStaffSort === "remaining") return b.storeRemaining - a.storeRemaining;
+          return 0;
+        });
+        const maxStaffSales = Math.max(...staffStatsList.map((s) => s.salesAmount), 1);
+
+        // ----------------------------------------------------
+        // B. 料理・商品別集計
+        // ----------------------------------------------------
+        const productStatsList = products.map((prod) => {
+          let soldCount = 0;
+          let salesAmount = 0;
+
+          filteredSales.forEach((s) => {
+            s.items?.forEach((it) => {
+              const itId = it.itemId || it.item_id;
+              const itName = it.itemName || it.item_name;
+              if (itId === prod.id || itName === prod.name) {
+                soldCount += it.quantity || 0;
+                salesAmount += (it.unitPrice || 0) * (it.quantity || 0);
+              }
+            });
+          });
+
+          // クラフト作成数
+          let craftTotal = 0;
+          craftLogs.forEach((l) => {
+            if (l.title.includes(prod.name) || l.detail.includes(prod.name)) {
+              const matches = Array.from(l.title.matchAll(/×(\d+)/g));
+              if (matches.length > 0) {
+                for (const m of matches) {
+                  craftTotal += parseInt(m[1]) || 1;
+                }
+              } else {
+                craftTotal += 1;
+              }
+            }
+          });
+
+          return {
+            ...prod,
+            soldCount,
+            salesAmount,
+            craftTotal,
+          };
+        });
+
+        const filteredProducts = productStatsList.filter((p) => {
+          if (statsProductShopFilter === "sakura") return (p.shopId || "sakura") === "sakura";
+          if (statsProductShopFilter === "buon_viaggio") return p.shopId === "buon_viaggio";
+          return true;
+        });
+
+        const sortedProducts = [...filteredProducts].sort((a, b) => {
+          if (statsProductSort === "sales") return b.salesAmount - a.salesAmount;
+          if (statsProductSort === "count") return b.soldCount - a.soldCount;
+          if (statsProductSort === "craft") return b.craftTotal - a.craftTotal;
+          if (statsProductSort === "stock") return (b.current_stock || 0) - (a.current_stock || 0);
+          return 0;
+        });
+        const maxProductSales = Math.max(...productStatsList.map((p) => p.salesAmount), 1);
+
+        // ----------------------------------------------------
+        // C. 素材別集計
+        // ----------------------------------------------------
+        const ingredientStatsList = ingredients.map((ing) => {
+          let procuredCount = 0;
+          const staffProcureMap: { [name: string]: number } = {};
+
+          inventoryLogs.forEach((l) => {
+            if (l.title.includes(`(${ing.name})`) || l.detail.includes(ing.name)) {
+              const isAdjustmentOnly =
+                l.title.includes("棚卸し") ||
+                l.detail.includes("棚卸し") ||
+                l.detail.includes("数合わせ") ||
+                (l.title.includes("手動調整") &&
+                  !l.detail.includes("クイック補充") &&
+                  !l.detail.includes("調達") &&
+                  !l.detail.includes("納品"));
+              if (isAdjustmentOnly) return;
+
+              let added = 0;
+              const quickMatch = l.detail.match(/クイック補充\s*\(\+(\d+)\)/);
+              if (quickMatch) {
+                added = parseInt(quickMatch[1], 10) || 0;
+              } else {
+                const procureMatch = l.detail.match(/\+(\d+)/);
+                if (l.title.includes("調達") || l.detail.includes("調達") || l.detail.includes("納品")) {
+                  if (procureMatch) added = parseInt(procureMatch[1], 10) || 0;
+                } else {
+                  const qtyMatch = l.detail.match(/在庫数(?:を)?\s*(\d+)\s*→\s*(\d+)/);
+                  if (qtyMatch) {
+                    const before = parseInt(qtyMatch[1], 10) || 0;
+                    const after = parseInt(qtyMatch[2], 10) || 0;
+                    if (after > before) added = after - before;
+                  }
+                }
+              }
+
+              if (added > 0) {
+                procuredCount += added;
+                const staffName = l.userName || "不明";
+                staffProcureMap[staffName] = (staffProcureMap[staffName] || 0) + added;
+              }
+            }
+          });
+
+          let topProvider: { name: string; count: number } | null = null;
+          for (const [name, count] of Object.entries(staffProcureMap)) {
+            if (!topProvider || count > topProvider.count) {
+              topProvider = { name, count };
+            }
+          }
+
+          // 推定消費数
+          let estimatedConsumed = 0;
+          products.forEach((prod) => {
+            const req = prod.recipe?.find(
+              (r) => r.ingredient_id === ing.id || r.ingredient_name === ing.name
+            );
+            if (req && req.quantity > 0) {
+              const prodStat = productStatsList.find((p) => p.id === prod.id);
+              const craftTotal = prodStat?.craftTotal || 0;
+              estimatedConsumed += craftTotal * req.quantity;
+            }
+          });
+
+          return {
+            ...ing,
+            procuredCount,
+            estimatedConsumed,
+            topProvider,
+          };
+        });
+
+        const sortedIngredients = [...ingredientStatsList].sort((a, b) => {
+          if (statsIngredientSort === "procured") return b.procuredCount - a.procuredCount;
+          if (statsIngredientSort === "stock") return (b.current_stock || 0) - (a.current_stock || 0);
+          if (statsIngredientSort === "name") return a.name.localeCompare(b.name, "ja");
+          return 0;
+        });
+
+        // ----------------------------------------------------
+        // D. 店舗別集計
+        // ----------------------------------------------------
+        const totalStoreSales = sakuraTotalAmount + buonTotalAmount;
+        const sakuraShare = totalStoreSales > 0 ? Math.round((sakuraTotalAmount / totalStoreSales) * 100) : 50;
+        const buonShare = totalStoreSales > 0 ? 100 - sakuraShare : 50;
+
+        // 順位バッジヘルパー
+        const getRankBadge = (idx: number) => {
+          if (idx === 0)
+            return (
+              <span className="w-6 h-6 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/40 text-xs font-black flex items-center justify-center">
+                🥇
+              </span>
+            );
+          if (idx === 1)
+            return (
+              <span className="w-6 h-6 rounded-full bg-stone-300/20 text-stone-200 border border-stone-400/40 text-xs font-black flex items-center justify-center">
+                🥈
+              </span>
+            );
+          if (idx === 2)
+            return (
+              <span className="w-6 h-6 rounded-full bg-amber-700/20 text-amber-600 border border-amber-700/40 text-xs font-black flex items-center justify-center">
+                🥉
+              </span>
+            );
+          return (
+            <span className="w-6 h-6 rounded-full bg-stone-800 text-stone-400 border border-stone-700 text-xs font-bold flex items-center justify-center">
+              {idx + 1}
+            </span>
+          );
+        };
+
+        // 期間ラベルの表示名
+        const getPeriodDisplayLabel = () => {
+          if (statsPeriod === "all") return "全期間累計（全データ）";
+          if (statsPeriod === "current") return "今週（進行中・リアルタイム集計）";
+          if (statsPeriod === "last") return "先週（確定・査定週）";
+          const found = availableWeeks.find((w) => w.weekKey === statsPeriod);
+          return found ? found.weekLabel : statsPeriod;
+        };
+
+        return (
+          <div className="space-y-6">
+            {/* ヘッダー & 対象期間選択 */}
+            <div className="bg-stone-900/90 p-5 rounded-3xl border border-stone-800 shadow-xl flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="px-2.5 py-1 rounded-full text-xs font-black bg-amber-500/10 text-amber-400 border border-amber-500/30">
+                    EXECUTIVE ANALYTICS
+                  </span>
+                  <span className="text-xs text-stone-400">部門別・個別統計一覧</span>
+                </div>
+                <h2 className="text-lg font-black text-white mt-1 flex items-center gap-2">
+                  <BarChart3 className="w-5 h-5 text-amber-500" />
+                  詳細統計・アナリティクス
+                </h2>
+                <p className="text-xs text-stone-400 mt-0.5">
+                  スタッフ、商品（料理）、素材、店舗それぞれの詳細な実績データを並べて分析できます
+                </p>
+              </div>
+
+              {/* 期間セレクター */}
+              <div className="flex flex-wrap items-center gap-2 bg-stone-950/80 p-2 rounded-2xl border border-stone-800">
+                <div className="flex items-center gap-1.5 px-2 text-stone-400 text-xs font-bold">
+                  <Calendar className="w-3.5 h-3.5 text-amber-500" />
+                  <span>対象期間:</span>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setStatsPeriod("all")}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer ${
+                    statsPeriod === "all"
+                      ? "bg-amber-600 text-stone-950 shadow-md scale-[1.02]"
+                      : "bg-stone-900 text-stone-300 hover:bg-stone-800 hover:text-white"
+                  }`}
+                >
+                  全期間累計
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setStatsPeriod("current")}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer ${
+                    statsPeriod === "current"
+                      ? "bg-amber-600 text-stone-950 shadow-md scale-[1.02]"
+                      : "bg-stone-900 text-stone-300 hover:bg-stone-800 hover:text-white"
+                  }`}
+                >
+                  今週 (集計中)
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setStatsPeriod("last")}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer ${
+                    statsPeriod === "last"
+                      ? "bg-amber-600 text-stone-950 shadow-md scale-[1.02]"
+                      : "bg-stone-900 text-stone-300 hover:bg-stone-800 hover:text-white"
+                  }`}
+                >
+                  先週 (確定週)
+                </button>
+
+                <select
+                  value={statsPeriod.includes("_") ? statsPeriod : ""}
+                  onChange={(e) => {
+                    if (e.target.value) setStatsPeriod(e.target.value);
+                  }}
+                  className="bg-stone-900 border border-stone-700 text-stone-200 text-xs rounded-xl px-2.5 py-1.5 font-bold focus:outline-none focus:border-amber-500"
+                >
+                  <option value="">過去の週を選択...</option>
+                  {availableWeeks.map((w) => (
+                    <option key={w.weekKey} value={w.weekKey}>
+                      {w.weekLabel}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* 対象期間サマリーメトリクス */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+              <div className="bg-stone-900/90 p-3.5 rounded-2xl border border-stone-800">
+                <div className="text-[10px] font-bold text-stone-400">期間総売上</div>
+                <div className="text-lg font-black text-amber-400 mt-0.5">
+                  {formatCurrency(totalSalesAmount)}
+                </div>
+                <div className="text-[10px] text-stone-500 mt-1">
+                  🌸 {formatCurrency(sakuraTotalAmount)} / 🍷 {formatCurrency(buonTotalAmount)}
+                </div>
+              </div>
+
+              <div className="bg-stone-900/90 p-3.5 rounded-2xl border border-stone-800">
+                <div className="text-[10px] font-bold text-stone-400">販売個数 / 伝票数</div>
+                <div className="text-lg font-black text-stone-100 mt-0.5">
+                  {totalSoldItems.toLocaleString()} <span className="text-xs text-stone-400">個</span>
+                </div>
+                <div className="text-[10px] text-stone-500 mt-1">
+                  伝票 {totalSalesCount} 件（平均 {formatCurrency(avgOrderAmount)}）
+                </div>
+              </div>
+
+              <div className="bg-stone-900/90 p-3.5 rounded-2xl border border-stone-800">
+                <div className="text-[10px] font-bold text-stone-400">店舗手元純残り ({storeRate}%)</div>
+                <div className="text-lg font-black text-emerald-400 mt-0.5">
+                  {formatCurrency(totalStoreRemaining)}
+                </div>
+                <div className="text-[10px] text-stone-500 mt-1">
+                  金庫入金分
+                </div>
+              </div>
+
+              <div className="bg-stone-900/90 p-3.5 rounded-2xl border border-stone-800">
+                <div className="text-[10px] font-bold text-stone-400">手渡しインセンティブ ({staffIncentiveRate}%)</div>
+                <div className="text-lg font-black text-stone-200 mt-0.5">
+                  {formatCurrency(totalIncentive)}
+                </div>
+                <div className="text-[10px] text-stone-500 mt-1">
+                  スタッフ即時受取
+                </div>
+              </div>
+
+              <div className="bg-stone-900/90 p-3.5 rounded-2xl border border-stone-800">
+                <div className="text-[10px] font-bold text-stone-400">クラフト仕込み作成</div>
+                <div className="text-lg font-black text-amber-300 mt-0.5">
+                  {totalCraftCount.toLocaleString()} <span className="text-xs text-stone-400">個</span>
+                </div>
+                <div className="text-[10px] text-stone-500 mt-1">
+                  ログ集計作成実績
+                </div>
+              </div>
+
+              <div className="bg-stone-900/90 p-3.5 rounded-2xl border border-stone-800">
+                <div className="text-[10px] font-bold text-stone-400">素材調達・納品</div>
+                <div className="text-lg font-black text-amber-300 mt-0.5">
+                  {totalIngredientCount.toLocaleString()} <span className="text-xs text-stone-400">個</span>
+                </div>
+                <div className="text-[10px] text-stone-500 mt-1">
+                  調整を除く納品数
+                </div>
+              </div>
+            </div>
+
+            {/* 表示切り替えサブバー */}
+            <div className="flex flex-wrap items-center justify-between gap-3 bg-stone-900/90 p-3 rounded-2xl border border-stone-800">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setStatsView("all")}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer ${
+                    statsView === "all"
+                      ? "bg-amber-600 text-stone-950 font-black shadow-xs"
+                      : "bg-stone-950/70 text-stone-300 hover:bg-stone-800"
+                  }`}
+                >
+                  📋 すべて並べて表示
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setStatsView("staff")}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center gap-1.5 ${
+                    statsView === "staff"
+                      ? "bg-amber-600 text-stone-950 font-black shadow-xs"
+                      : "bg-stone-950/70 text-stone-300 hover:bg-stone-800"
+                  }`}
+                >
+                  <Users className="w-3.5 h-3.5" />
+                  👥 スタッフ別 統計 ({users.length}名)
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setStatsView("products")}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center gap-1.5 ${
+                    statsView === "products"
+                      ? "bg-amber-600 text-stone-950 font-black shadow-xs"
+                      : "bg-stone-950/70 text-stone-300 hover:bg-stone-800"
+                  }`}
+                >
+                  <Utensils className="w-3.5 h-3.5" />
+                  🍱 料理・商品別 統計 ({products.length}品)
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setStatsView("ingredients")}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center gap-1.5 ${
+                    statsView === "ingredients"
+                      ? "bg-amber-600 text-stone-950 font-black shadow-xs"
+                      : "bg-stone-950/70 text-stone-300 hover:bg-stone-800"
+                  }`}
+                >
+                  <Boxes className="w-3.5 h-3.5" />
+                  🌾 素材アイテム別 統計 ({ingredients.length}品)
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setStatsView("stores")}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center gap-1.5 ${
+                    statsView === "stores"
+                      ? "bg-amber-600 text-stone-950 font-black shadow-xs"
+                      : "bg-stone-950/70 text-stone-300 hover:bg-stone-800"
+                  }`}
+                >
+                  <Store className="w-3.5 h-3.5" />
+                  🏪 店舗別 比較分析
+                </button>
+              </div>
+
+              <div className="text-xs text-stone-400 font-bold px-2">
+                集計対象: <span className="text-amber-400">{getPeriodDisplayLabel()}</span>
+              </div>
+            </div>
+
+            {/* ========================================================
+                セクション①: 👥 スタッフ別 統計一覧
+            ======================================================== */}
+            {(statsView === "all" || statsView === "staff") && (
+              <div className="bg-stone-900/90 p-5 rounded-3xl border border-stone-800 shadow-xl space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-stone-800">
+                  <div className="flex items-center gap-2">
+                    <span className="p-1.5 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/30">
+                      <Users className="w-4 h-4" />
+                    </span>
+                    <div>
+                      <h3 className="text-sm font-black text-white flex items-center gap-2">
+                        スタッフ別 統計一覧
+                        <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-stone-800 text-stone-300">
+                          {users.length}名
+                        </span>
+                      </h3>
+                      <p className="text-[11px] text-stone-400">
+                        個人の売上実績・料理作成数・素材調達数・店舗貢献額を一覧表示
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* スタッフソートセレクター */}
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-[11px] text-stone-400 font-bold">並び替え:</span>
+                    <button
+                      type="button"
+                      onClick={() => setStatsStaffSort("sales")}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        statsStaffSort === "sales"
+                          ? "bg-amber-600 text-stone-950 font-black"
+                          : "bg-stone-800 text-stone-300 hover:bg-stone-700"
+                      }`}
+                    >
+                      売上順
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setStatsStaffSort("craft")}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        statsStaffSort === "craft"
+                          ? "bg-amber-600 text-stone-950 font-black"
+                          : "bg-stone-800 text-stone-300 hover:bg-stone-700"
+                      }`}
+                    >
+                      仕込み作成数順
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setStatsStaffSort("ingredient")}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        statsStaffSort === "ingredient"
+                          ? "bg-amber-600 text-stone-950 font-black"
+                          : "bg-stone-800 text-stone-300 hover:bg-stone-700"
+                      }`}
+                    >
+                      素材調達数順
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setStatsStaffSort("count")}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        statsStaffSort === "count"
+                          ? "bg-amber-600 text-stone-950 font-black"
+                          : "bg-stone-800 text-stone-300 hover:bg-stone-700"
+                      }`}
+                    >
+                      伝票件数順
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setStatsStaffSort("remaining")}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        statsStaffSort === "remaining"
+                          ? "bg-amber-600 text-stone-950 font-black"
+                          : "bg-stone-800 text-stone-300 hover:bg-stone-700"
+                      }`}
+                    >
+                      純残り貢献順
+                    </button>
+                  </div>
+                </div>
+
+                {/* スタッフテーブル */}
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs text-stone-300">
+                    <thead className="bg-stone-950/80 text-[11px] font-black text-stone-400 border-b border-stone-800">
+                      <tr>
+                        <th className="py-2.5 px-3 text-center w-10">順位</th>
+                        <th className="py-2.5 px-3">従業員名</th>
+                        <th className="py-2.5 px-3">役職</th>
+                        <th className="py-2.5 px-3 text-right">総売上金額</th>
+                        <th className="py-2.5 px-3 text-right">🌸さくら / 🍷Buon</th>
+                        <th className="py-2.5 px-3 text-center">販売件数 / 点数</th>
+                        <th className="py-2.5 px-3 text-right">客単価</th>
+                        <th className="py-2.5 px-3 text-right">料理仕込み</th>
+                        <th className="py-2.5 px-3 text-right">素材調達</th>
+                        <th className="py-2.5 px-3 text-right">値引き実績</th>
+                        <th className="py-2.5 px-3 text-right">純残り貢献 (70%)</th>
+                        <th className="py-2.5 px-3 text-right">手渡し受取 (30%)</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-stone-800/60 font-medium">
+                      {sortedStaffStats.map((staff, idx) => {
+                        const pct = Math.min(
+                          100,
+                          Math.round((staff.salesAmount / maxStaffSales) * 100)
+                        );
+                        return (
+                          <tr
+                            key={staff.userId}
+                            className="hover:bg-stone-800/40 transition-colors"
+                          >
+                            <td className="py-3 px-3 text-center font-bold">
+                              {getRankBadge(idx)}
+                            </td>
+                            <td className="py-3 px-3 font-black text-stone-100 whitespace-nowrap">
+                              <div className="flex items-center gap-1.5">
+                                <span>{staff.displayName}</span>
+                                {staff.isExecutive && (
+                                  <span className="text-[10px] text-amber-400">👑</span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="py-3 px-3 whitespace-nowrap">
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-stone-800 text-stone-300 border border-stone-700">
+                                {staff.roleName}
+                              </span>
+                            </td>
+                            <td className="py-3 px-3 text-right whitespace-nowrap">
+                              <div className="font-black text-amber-400 text-sm">
+                                {formatCurrency(staff.salesAmount)}
+                              </div>
+                              <div className="w-24 bg-stone-800 h-1.5 rounded-full ml-auto mt-1 overflow-hidden">
+                                <div
+                                  className="bg-amber-500 h-full rounded-full"
+                                  style={{ width: `${pct}%` }}
+                                />
+                              </div>
+                            </td>
+                            <td className="py-3 px-3 text-right text-[11px] text-stone-400 whitespace-nowrap">
+                              <div>🌸 {formatCurrency(staff.sakuraAmount)}</div>
+                              <div>🍷 {formatCurrency(staff.buonAmount)}</div>
+                            </td>
+                            <td className="py-3 px-3 text-center whitespace-nowrap">
+                              <span className="font-bold text-stone-200">
+                                {staff.salesCount} 件
+                              </span>
+                              <span className="text-stone-500 mx-1">/</span>
+                              <span className="font-bold text-amber-300">
+                                {staff.itemsSold} 個
+                              </span>
+                            </td>
+                            <td className="py-3 px-3 text-right whitespace-nowrap text-stone-300 font-bold">
+                              {staff.salesCount > 0 ? formatCurrency(staff.avgOrder) : "—"}
+                            </td>
+                            <td className="py-3 px-3 text-right whitespace-nowrap">
+                              <span
+                                className={`font-black ${
+                                  staff.craftCount > 0 ? "text-amber-300" : "text-stone-500"
+                                }`}
+                              >
+                                {staff.craftCount.toLocaleString()}
+                              </span>
+                              <span className="text-[10px] text-stone-500 ml-0.5">個</span>
+                            </td>
+                            <td className="py-3 px-3 text-right whitespace-nowrap">
+                              <span
+                                className={`font-black ${
+                                  staff.ingredientCount > 0
+                                    ? "text-emerald-400"
+                                    : "text-stone-500"
+                                }`}
+                              >
+                                {staff.ingredientCount.toLocaleString()}
+                              </span>
+                              <span className="text-[10px] text-stone-500 ml-0.5">個</span>
+                            </td>
+                            <td className="py-3 px-3 text-right whitespace-nowrap">
+                              {staff.discountCount > 0 ? (
+                                <div>
+                                  <span className="text-rose-400 font-bold">
+                                    -{formatCurrency(staff.discountAmount)}
+                                  </span>
+                                  <div className="text-[10px] text-stone-500">
+                                    {staff.discountCount}回
+                                  </div>
+                                </div>
+                              ) : (
+                                <span className="text-stone-600">—</span>
+                              )}
+                            </td>
+                            <td className="py-3 px-3 text-right whitespace-nowrap font-black text-emerald-400">
+                              {formatCurrency(staff.storeRemaining)}
+                            </td>
+                            <td className="py-3 px-3 text-right whitespace-nowrap font-black text-stone-300">
+                              {formatCurrency(staff.incentive)}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* ========================================================
+                セクション②: 🍱 料理・商品別 統計一覧
+            ======================================================== */}
+            {(statsView === "all" || statsView === "products") && (
+              <div className="bg-stone-900/90 p-5 rounded-3xl border border-stone-800 shadow-xl space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-stone-800">
+                  <div className="flex items-center gap-2">
+                    <span className="p-1.5 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/30">
+                      <Utensils className="w-4 h-4" />
+                    </span>
+                    <div>
+                      <h3 className="text-sm font-black text-white flex items-center gap-2">
+                        料理・商品別 統計一覧
+                        <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-stone-800 text-stone-300">
+                          {filteredProducts.length}品
+                        </span>
+                      </h3>
+                      <p className="text-[11px] text-stone-400">
+                        各料理の販売個数、売上金額、クラフト作成総数、現在庫を網羅
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {/* 店舗フィルター */}
+                    <div className="flex items-center gap-1 bg-stone-950/80 p-1 rounded-xl border border-stone-800">
+                      <button
+                        type="button"
+                        onClick={() => setStatsProductShopFilter("all")}
+                        className={`px-2 py-1 rounded-lg text-xs font-bold cursor-pointer transition-all ${
+                          statsProductShopFilter === "all"
+                            ? "bg-amber-600 text-stone-950 font-black"
+                            : "text-stone-400 hover:text-white"
+                        }`}
+                      >
+                        全店舗
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setStatsProductShopFilter("sakura")}
+                        className={`px-2 py-1 rounded-lg text-xs font-bold cursor-pointer transition-all ${
+                          statsProductShopFilter === "sakura"
+                            ? "bg-amber-600 text-stone-950 font-black"
+                            : "text-stone-400 hover:text-white"
+                        }`}
+                      >
+                        🌸 さくら
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setStatsProductShopFilter("buon_viaggio")}
+                        className={`px-2 py-1 rounded-lg text-xs font-bold cursor-pointer transition-all ${
+                          statsProductShopFilter === "buon_viaggio"
+                            ? "bg-amber-600 text-stone-950 font-black"
+                            : "text-stone-400 hover:text-white"
+                        }`}
+                      >
+                        🍷 Buon
+                      </button>
+                    </div>
+
+                    {/* 商品ソート */}
+                    <div className="flex items-center gap-1">
+                      <span className="text-[11px] text-stone-400 font-bold">並び替え:</span>
+                      <button
+                        type="button"
+                        onClick={() => setStatsProductSort("sales")}
+                        className={`px-2 py-1 rounded-lg text-xs font-bold cursor-pointer transition-all ${
+                          statsProductSort === "sales"
+                            ? "bg-amber-600 text-stone-950 font-black"
+                            : "bg-stone-800 text-stone-300 hover:bg-stone-700"
+                        }`}
+                      >
+                        売上金額順
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setStatsProductSort("count")}
+                        className={`px-2 py-1 rounded-lg text-xs font-bold cursor-pointer transition-all ${
+                          statsProductSort === "count"
+                            ? "bg-amber-600 text-stone-950 font-black"
+                            : "bg-stone-800 text-stone-300 hover:bg-stone-700"
+                        }`}
+                      >
+                        販売個数順
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setStatsProductSort("craft")}
+                        className={`px-2 py-1 rounded-lg text-xs font-bold cursor-pointer transition-all ${
+                          statsProductSort === "craft"
+                            ? "bg-amber-600 text-stone-950 font-black"
+                            : "bg-stone-800 text-stone-300 hover:bg-stone-700"
+                        }`}
+                      >
+                        仕込み作成数順
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setStatsProductSort("stock")}
+                        className={`px-2 py-1 rounded-lg text-xs font-bold cursor-pointer transition-all ${
+                          statsProductSort === "stock"
+                            ? "bg-amber-600 text-stone-950 font-black"
+                            : "bg-stone-800 text-stone-300 hover:bg-stone-700"
+                        }`}
+                      >
+                        在庫数順
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 商品テーブル */}
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs text-stone-300">
+                    <thead className="bg-stone-950/80 text-[11px] font-black text-stone-400 border-b border-stone-800">
+                      <tr>
+                        <th className="py-2.5 px-3 text-center w-10">順位</th>
+                        <th className="py-2.5 px-3">商品画像・料理名</th>
+                        <th className="py-2.5 px-3">所属店舗</th>
+                        <th className="py-2.5 px-3">カテゴリ</th>
+                        <th className="py-2.5 px-3 text-right">単価</th>
+                        <th className="py-2.5 px-3 text-right">販売個数</th>
+                        <th className="py-2.5 px-3 text-right">販売総額</th>
+                        <th className="py-2.5 px-3 text-right">仕込み作成数</th>
+                        <th className="py-2.5 px-3 text-center">現在庫数</th>
+                        <th className="py-2.5 px-3 text-right">レシピ素材数</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-stone-800/60 font-medium">
+                      {sortedProducts.map((prod, idx) => {
+                        const pct = Math.min(
+                          100,
+                          Math.round((prod.salesAmount / maxProductSales) * 100)
+                        );
+                        const isBuon = prod.shopId === "buon_viaggio";
+                        const stock = prod.current_stock || 0;
+                        return (
+                          <tr
+                            key={prod.id}
+                            className="hover:bg-stone-800/40 transition-colors"
+                          >
+                            <td className="py-3 px-3 text-center font-bold">
+                              {getRankBadge(idx)}
+                            </td>
+                            <td className="py-3 px-3 whitespace-nowrap">
+                              <div className="flex items-center gap-2.5">
+                                <div className="w-8 h-8 rounded-lg bg-stone-950 border border-stone-800 flex items-center justify-center overflow-hidden shrink-0">
+                                  {prod.image_url ? (
+                                    // eslint-disable-next-line @next/next/no-img-element
+                                    <img
+                                      src={prod.image_url}
+                                      alt={prod.name}
+                                      className="w-full h-full object-cover"
+                                    />
+                                  ) : (
+                                    <Utensils className="w-4 h-4 text-stone-500" />
+                                  )}
+                                </div>
+                                <span className="font-black text-stone-100">
+                                  {prod.name}
+                                </span>
+                              </div>
+                            </td>
+                            <td className="py-3 px-3 whitespace-nowrap">
+                              <span
+                                className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                  isBuon
+                                    ? "bg-rose-950/70 text-rose-300 border border-rose-800/60"
+                                    : "bg-amber-950/70 text-amber-300 border border-amber-800/60"
+                                }`}
+                              >
+                                {isBuon ? "🍷 Buon" : "🌸 さくら"}
+                              </span>
+                            </td>
+                            <td className="py-3 px-3 text-stone-400 whitespace-nowrap">
+                              {prod.category_name || "料理"}
+                            </td>
+                            <td className="py-3 px-3 text-right font-bold text-stone-200 whitespace-nowrap">
+                              {formatCurrency(prod.selling_price || 0)}
+                            </td>
+                            <td className="py-3 px-3 text-right whitespace-nowrap font-black text-stone-100">
+                              {prod.soldCount.toLocaleString()}
+                              <span className="text-[10px] text-stone-400 font-normal ml-0.5">
+                                個
+                              </span>
+                            </td>
+                            <td className="py-3 px-3 text-right whitespace-nowrap">
+                              <div className="font-black text-amber-400 text-sm">
+                                {formatCurrency(prod.salesAmount)}
+                              </div>
+                              <div className="w-20 bg-stone-800 h-1.5 rounded-full ml-auto mt-1 overflow-hidden">
+                                <div
+                                  className="bg-amber-500 h-full rounded-full"
+                                  style={{ width: `${pct}%` }}
+                                />
+                              </div>
+                            </td>
+                            <td className="py-3 px-3 text-right whitespace-nowrap">
+                              <span
+                                className={`font-black ${
+                                  prod.craftTotal > 0 ? "text-amber-300" : "text-stone-500"
+                                }`}
+                              >
+                                {prod.craftTotal.toLocaleString()}
+                              </span>
+                              <span className="text-[10px] text-stone-500 ml-0.5">個</span>
+                            </td>
+                            <td className="py-3 px-3 text-center whitespace-nowrap">
+                              <span
+                                className={`px-2 py-0.5 rounded-full text-xs font-black ${
+                                  stock === 0
+                                    ? "bg-rose-500/20 text-rose-400 border border-rose-500/40"
+                                    : stock <= 5
+                                    ? "bg-amber-500/20 text-amber-400 border border-amber-500/40"
+                                    : "bg-stone-800 text-stone-200 border border-stone-700"
+                                }`}
+                              >
+                                {stock.toLocaleString()} 個
+                              </span>
+                            </td>
+                            <td className="py-3 px-3 text-right text-stone-400 whitespace-nowrap">
+                              {prod.recipe && prod.recipe.length > 0 ? (
+                                <span className="text-[11px] text-stone-300 font-bold">
+                                  {prod.recipe.length}種
+                                </span>
+                              ) : (
+                                <span className="text-stone-600">未設定</span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* ========================================================
+                セクション③: 🌾 素材アイテム別 統計一覧
+            ======================================================== */}
+            {(statsView === "all" || statsView === "ingredients") && (
+              <div className="bg-stone-900/90 p-5 rounded-3xl border border-stone-800 shadow-xl space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-stone-800">
+                  <div className="flex items-center gap-2">
+                    <span className="p-1.5 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/30">
+                      <Boxes className="w-4 h-4" />
+                    </span>
+                    <div>
+                      <h3 className="text-sm font-black text-white flex items-center gap-2">
+                        素材アイテム別 統計一覧
+                        <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-stone-800 text-stone-300">
+                          {ingredients.length}品
+                        </span>
+                      </h3>
+                      <p className="text-[11px] text-stone-400">
+                        素材ごとの調達・納品累計個数、推定消費量、現在庫、主な調達スタッフ
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[11px] text-stone-400 font-bold">並び替え:</span>
+                    <button
+                      type="button"
+                      onClick={() => setStatsIngredientSort("procured")}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold cursor-pointer transition-all ${
+                        statsIngredientSort === "procured"
+                          ? "bg-amber-600 text-stone-950 font-black"
+                          : "bg-stone-800 text-stone-300 hover:bg-stone-700"
+                      }`}
+                    >
+                      調達数順
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setStatsIngredientSort("stock")}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold cursor-pointer transition-all ${
+                        statsIngredientSort === "stock"
+                          ? "bg-amber-600 text-stone-950 font-black"
+                          : "bg-stone-800 text-stone-300 hover:bg-stone-700"
+                      }`}
+                    >
+                      在庫数順
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setStatsIngredientSort("name")}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold cursor-pointer transition-all ${
+                        statsIngredientSort === "name"
+                          ? "bg-amber-600 text-stone-950 font-black"
+                          : "bg-stone-800 text-stone-300 hover:bg-stone-700"
+                      }`}
+                    >
+                      品名順
+                    </button>
+                  </div>
+                </div>
+
+                {/* 素材テーブル */}
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs text-stone-300">
+                    <thead className="bg-stone-950/80 text-[11px] font-black text-stone-400 border-b border-stone-800">
+                      <tr>
+                        <th className="py-2.5 px-3 text-center w-10">順位</th>
+                        <th className="py-2.5 px-3">素材画像・名称</th>
+                        <th className="py-2.5 px-3">カテゴリ</th>
+                        <th className="py-2.5 px-3">単位</th>
+                        <th className="py-2.5 px-3 text-right">調達・納品総数</th>
+                        <th className="py-2.5 px-3 text-right">料理消費（推定）</th>
+                        <th className="py-2.5 px-3 text-center">現在庫数</th>
+                        <th className="py-2.5 px-3 text-right">主な調達スタッフ</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-stone-800/60 font-medium">
+                      {sortedIngredients.map((ing, idx) => {
+                        const stock = ing.current_stock || 0;
+                        return (
+                          <tr
+                            key={ing.id}
+                            className="hover:bg-stone-800/40 transition-colors"
+                          >
+                            <td className="py-3 px-3 text-center font-bold">
+                              {getRankBadge(idx)}
+                            </td>
+                            <td className="py-3 px-3 whitespace-nowrap">
+                              <div className="flex items-center gap-2.5">
+                                <div className="w-8 h-8 rounded-lg bg-stone-950 border border-stone-800 flex items-center justify-center overflow-hidden shrink-0">
+                                  {ing.image_url ? (
+                                    // eslint-disable-next-line @next/next/no-img-element
+                                    <img
+                                      src={ing.image_url}
+                                      alt={ing.name}
+                                      className="w-full h-full object-cover"
+                                    />
+                                  ) : (
+                                    <Package className="w-4 h-4 text-stone-500" />
+                                  )}
+                                </div>
+                                <span className="font-black text-stone-100">
+                                  {ing.name}
+                                </span>
+                              </div>
+                            </td>
+                            <td className="py-3 px-3 text-stone-400 whitespace-nowrap">
+                              {ing.category_name || "素材"}
+                            </td>
+                            <td className="py-3 px-3 text-stone-400 whitespace-nowrap">
+                              {ing.unit || "個"}
+                            </td>
+                            <td className="py-3 px-3 text-right whitespace-nowrap">
+                              <span
+                                className={`font-black text-sm ${
+                                  ing.procuredCount > 0 ? "text-amber-400" : "text-stone-500"
+                                }`}
+                              >
+                                {ing.procuredCount.toLocaleString()}
+                              </span>
+                              <span className="text-[10px] text-stone-500 ml-0.5">
+                                {ing.unit || "個"}
+                              </span>
+                            </td>
+                            <td className="py-3 px-3 text-right whitespace-nowrap">
+                              <span
+                                className={`font-bold ${
+                                  ing.estimatedConsumed > 0 ? "text-stone-200" : "text-stone-600"
+                                }`}
+                              >
+                                {ing.estimatedConsumed.toLocaleString()}
+                              </span>
+                              <span className="text-[10px] text-stone-500 ml-0.5">
+                                {ing.unit || "個"}
+                              </span>
+                            </td>
+                            <td className="py-3 px-3 text-center whitespace-nowrap">
+                              <span
+                                className={`px-2 py-0.5 rounded-full text-xs font-black ${
+                                  stock === 0
+                                    ? "bg-rose-500/20 text-rose-400 border border-rose-500/40"
+                                    : stock <= 10
+                                    ? "bg-amber-500/20 text-amber-400 border border-amber-500/40"
+                                    : "bg-stone-800 text-stone-200 border border-stone-700"
+                                }`}
+                              >
+                                {stock.toLocaleString()} {ing.unit || "個"}
+                              </span>
+                            </td>
+                            <td className="py-3 px-3 text-right whitespace-nowrap">
+                              {ing.topProvider ? (() => {
+                                const tp = ing.topProvider as { name: string; count: number };
+                                return (
+                                  <div className="flex items-center justify-end gap-1.5">
+                                    <span className="font-bold text-amber-300">
+                                      {tp.name}
+                                    </span>
+                                    <span className="text-[11px] text-stone-400">
+                                      ({tp.count.toLocaleString()}個)
+                                    </span>
+                                  </div>
+                                );
+                              })() : (
+                                <span className="text-stone-600">—</span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* ========================================================
+                セクション④: 🏪 店舗別 比較分析（さくら vs Buon viaggio）
+            ======================================================== */}
+            {(statsView === "all" || statsView === "stores") && (
+              <div className="bg-stone-900/90 p-5 rounded-3xl border border-stone-800 shadow-xl space-y-5">
+                <div className="flex items-center gap-2 pb-3 border-b border-stone-800">
+                  <span className="p-1.5 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/30">
+                    <Store className="w-4 h-4" />
+                  </span>
+                  <div>
+                    <h3 className="text-sm font-black text-white flex items-center gap-2">
+                      店舗別 実績比較分析
+                    </h3>
+                    <p className="text-[11px] text-stone-400">
+                      「和食さくら」と「Buon viaggio」の両店舗の業績を直接比較
+                    </p>
+                  </div>
+                </div>
+
+                {/* 売上シェア比率バー */}
+                <div className="bg-stone-950/70 p-4 rounded-2xl border border-stone-800">
+                  <div className="flex items-center justify-between text-xs font-black mb-2">
+                    <span className="text-amber-400 flex items-center gap-1.5">
+                      🌸 和食さくら: {sakuraShare}% ({formatCurrency(sakuraTotalAmount)})
+                    </span>
+                    <span className="text-rose-400 flex items-center gap-1.5">
+                      🍷 Buon viaggio: {buonShare}% ({formatCurrency(buonTotalAmount)})
+                    </span>
+                  </div>
+                  <div className="w-full h-3 bg-stone-800 rounded-full overflow-hidden flex">
+                    <div
+                      className="bg-amber-500 h-full transition-all duration-500"
+                      style={{ width: `${sakuraShare}%` }}
+                    />
+                    <div
+                      className="bg-rose-500 h-full transition-all duration-500"
+                      style={{ width: `${buonShare}%` }}
+                    />
+                  </div>
+                </div>
+
+                {/* 店舗カード対比 */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* 和食さくら */}
+                  <div className="bg-stone-950/70 p-5 rounded-2xl border border-stone-800/80 space-y-4">
+                    <div className="flex items-center justify-between pb-3 border-b border-stone-800">
+                      <div className="flex items-center gap-2.5">
+                        <span className="text-2xl">🌸</span>
+                        <div>
+                          <div className="font-black text-white text-base">和食さくら</div>
+                          <span className="text-[10px] text-stone-400 font-bold">
+                            登録メニュー {products.filter((p) => (p.shopId || "sakura") === "sakura").length} 品
+                          </span>
+                        </div>
+                      </div>
+                      <span className="text-xl font-black text-amber-400">
+                        {formatCurrency(sakuraTotalAmount)}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2.5 text-xs">
+                      <div className="bg-stone-900/80 p-2.5 rounded-xl border border-stone-800/60">
+                        <span className="text-[10px] text-stone-400 block font-bold">販売総点数</span>
+                        <span className="text-sm font-black text-stone-100 mt-0.5 block">
+                          {sakuraItemsSold.toLocaleString()} 個
+                        </span>
+                        <span className="text-[10px] text-stone-500">伝票 {sakuraSales.length} 件</span>
+                      </div>
+
+                      <div className="bg-stone-900/80 p-2.5 rounded-xl border border-stone-800/60">
+                        <span className="text-[10px] text-stone-400 block font-bold">平均客単価</span>
+                        <span className="text-sm font-black text-stone-100 mt-0.5 block">
+                          {sakuraSales.length > 0
+                            ? formatCurrency(Math.round(sakuraTotalAmount / sakuraSales.length))
+                            : "—"}
+                        </span>
+                        <span className="text-[10px] text-stone-500">1伝票あたり</span>
+                      </div>
+
+                      <div className="bg-stone-900/80 p-2.5 rounded-xl border border-stone-800/60">
+                        <span className="text-[10px] text-stone-400 block font-bold">
+                          店舗純残り ({storeRate}%)
+                        </span>
+                        <span className="text-sm font-black text-emerald-400 mt-0.5 block">
+                          {formatCurrency(Math.round(sakuraTotalAmount * (storeRate / 100)))}
+                        </span>
+                        <span className="text-[10px] text-stone-500">金庫入金分</span>
+                      </div>
+
+                      <div className="bg-stone-900/80 p-2.5 rounded-xl border border-stone-800/60">
+                        <span className="text-[10px] text-stone-400 block font-bold">
+                          手渡し分 ({staffIncentiveRate}%)
+                        </span>
+                        <span className="text-sm font-black text-stone-300 mt-0.5 block">
+                          {formatCurrency(Math.round(sakuraTotalAmount * (staffIncentiveRate / 100)))}
+                        </span>
+                        <span className="text-[10px] text-stone-500">スタッフ受取</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Buon viaggio */}
+                  <div className="bg-stone-950/70 p-5 rounded-2xl border border-stone-800/80 space-y-4">
+                    <div className="flex items-center justify-between pb-3 border-b border-stone-800">
+                      <div className="flex items-center gap-2.5">
+                        <span className="text-2xl">🍷</span>
+                        <div>
+                          <div className="font-black text-white text-base">Buon viaggio</div>
+                          <span className="text-[10px] text-stone-400 font-bold">
+                            登録メニュー {products.filter((p) => p.shopId === "buon_viaggio").length} 品
+                          </span>
+                        </div>
+                      </div>
+                      <span className="text-xl font-black text-amber-400">
+                        {formatCurrency(buonTotalAmount)}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2.5 text-xs">
+                      <div className="bg-stone-900/80 p-2.5 rounded-xl border border-stone-800/60">
+                        <span className="text-[10px] text-stone-400 block font-bold">販売総点数</span>
+                        <span className="text-sm font-black text-stone-100 mt-0.5 block">
+                          {buonItemsSold.toLocaleString()} 個
+                        </span>
+                        <span className="text-[10px] text-stone-500">伝票 {buonSales.length} 件</span>
+                      </div>
+
+                      <div className="bg-stone-900/80 p-2.5 rounded-xl border border-stone-800/60">
+                        <span className="text-[10px] text-stone-400 block font-bold">平均客単価</span>
+                        <span className="text-sm font-black text-stone-100 mt-0.5 block">
+                          {buonSales.length > 0
+                            ? formatCurrency(Math.round(buonTotalAmount / buonSales.length))
+                            : "—"}
+                        </span>
+                        <span className="text-[10px] text-stone-500">1伝票あたり</span>
+                      </div>
+
+                      <div className="bg-stone-900/80 p-2.5 rounded-xl border border-stone-800/60">
+                        <span className="text-[10px] text-stone-400 block font-bold">
+                          店舗純残り ({storeRate}%)
+                        </span>
+                        <span className="text-sm font-black text-emerald-400 mt-0.5 block">
+                          {formatCurrency(Math.round(buonTotalAmount * (storeRate / 100)))}
+                        </span>
+                        <span className="text-[10px] text-stone-500">金庫入金分</span>
+                      </div>
+
+                      <div className="bg-stone-900/80 p-2.5 rounded-xl border border-stone-800/60">
+                        <span className="text-[10px] text-stone-400 block font-bold">
+                          手渡し分 ({staffIncentiveRate}%)
+                        </span>
+                        <span className="text-sm font-black text-stone-300 mt-0.5 block">
+                          {formatCurrency(Math.round(buonTotalAmount * (staffIncentiveRate / 100)))}
+                        </span>
+                        <span className="text-[10px] text-stone-500">スタッフ受取</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         );
       })()}
