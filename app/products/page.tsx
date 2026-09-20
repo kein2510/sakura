@@ -2,19 +2,12 @@
 
 import React, { useState } from "react";
 import {
-  UtensilsCrossed,
   Image as ImageIcon,
   Plus,
   Search,
-  Filter,
-  TrendingDown,
-  Layers,
   UploadCloud,
-  Eye,
-  CheckCircle,
   Camera,
   X,
-  Sparkles,
 } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import { formatCurrency } from "@/lib/utils";

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Clock, LogOut, User, ShieldCheck } from "lucide-react";
+import { Clock, LogOut, User } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import { getThemeStyles } from "@/lib/theme";
 

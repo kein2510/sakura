@@ -10,7 +10,6 @@ import {
   Boxes,
   Plus,
   Minus,
-  Sparkles,
   Store,
   Radio,
   Undo2,
@@ -19,7 +18,7 @@ import {
 } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import { formatCurrency } from "@/lib/utils";
-import { ShopId, SHOPS } from "@/types";
+import { ShopId } from "@/types";
 import { supabase } from "@/lib/supabase";
 
 export default function MainPage() {
@@ -38,13 +37,15 @@ export default function MainPage() {
 
   // 現在選択中の店舗
   const [selectedShopId, setSelectedShopId] = useState<string>("sakura");
+  const [prevShops, setPrevShops] = useState(shops);
 
   // 有効な店舗が存在する場合、未選択または削除済みの店舗なら先頭の店舗を選択
-  useEffect(() => {
+  if (shops !== prevShops) {
+    setPrevShops(shops);
     if (shops.length > 0 && !shops.some((s) => s.id === selectedShopId)) {
       setSelectedShopId(shops[0].id);
     }
-  }, [shops, selectedShopId]);
+  }
 
   // 各商品の選択個数ステート { [itemId]: number }
   const [quantities, setQuantities] = useState<{ [itemId: string]: number }>({});
@@ -76,8 +77,8 @@ export default function MainPage() {
         (payload) => {
           refreshData();
           if (payload.eventType === "UPDATE") {
-            const newItem = payload.new as any;
-            setRealtimeNotice(`【在庫更新】「${newItem.name}」が同期されました (現在庫: ${newItem.current_stock}${newItem.unit})`);
+            const newItem = payload.new as { name?: string; current_stock?: number; unit?: string };
+            setRealtimeNotice(`【在庫更新】「${newItem.name || ""}」が同期されました (現在庫: ${newItem.current_stock ?? 0}${newItem.unit || ""})`);
           } else if (payload.eventType === "INSERT") {
             setRealtimeNotice("【商品追加】新しい商品が同期されました！");
           }
@@ -90,8 +91,8 @@ export default function MainPage() {
         (payload) => {
           refreshData();
           if (payload.eventType === "INSERT") {
-            const s = payload.new as any;
-            setRealtimeNotice(`【売上登録】${s.staff_name}が売上 ¥${Number(s.total_amount).toLocaleString()} を登録しました！`);
+            const s = payload.new as { staff_name?: string; total_amount?: number };
+            setRealtimeNotice(`【売上登録】${s.staff_name || "スタッフ"}が売上 ¥${Number(s.total_amount ?? 0).toLocaleString()} を登録しました！`);
           }
           setTimeout(() => setRealtimeNotice(null), 3500);
         }
@@ -197,7 +198,7 @@ export default function MainPage() {
     const currentQuantities = { ...quantities };
     const currentShop = selectedShopId;
     const craftedNames = Object.entries(currentQuantities)
-      .filter(([_, q]) => q > 0)
+      .filter(([, q]) => q > 0)
       .map(([id, q]) => {
         const it = items.find((i) => i.id === id);
         return `${it?.name || "商品"} ×${q}`;

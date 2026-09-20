@@ -7,12 +7,9 @@ import {
   ShoppingBag,
   Boxes,
   ShieldCheck,
-  Store,
   LogOut,
   ChevronRight,
-  Sparkles,
   Receipt,
-  Image as ImageIcon,
 } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import { cn } from "@/lib/utils";

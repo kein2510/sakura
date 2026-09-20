@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from "react";
+import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
 import {
   StaffUser,
   Role,
@@ -14,12 +14,13 @@ import {
   WeeklySummary,
   StaffWeeklyStat,
   ShopId,
-  SHOPS,
   ShopDefinition,
   SiteBranding,
   DEFAULT_BRANDING,
   DEFAULT_SHOPS,
   StoreSettings,
+  ItemType,
+  PaymentMethod,
 } from "@/types";
 import {
   mockStaffUsers,
@@ -27,7 +28,7 @@ import {
   initialActionLogs,
   initialSales,
 } from "@/data/mockData";
-import { getRecentWeeks, isDateInWeek, WeekPeriod } from "@/lib/dateUtils";
+import { getRecentWeeks, isDateInWeek } from "@/lib/dateUtils";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 
 export const defaultCustomRoles: CustomRole[] = [
@@ -184,10 +185,6 @@ interface AppContextType {
 
   // クラウド強制再同期
   refreshData: () => Promise<void>;
-
-  // 互換用メソッド
-  addSale: (saleData: any) => Promise<Sale>;
-  recordStockTransaction: (params: any) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -322,14 +319,24 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   });
 
   // 週次ボーナス確定データ
-  const [weeklyBonuses, setWeeklyBonuses] = useState<{
+  type WeeklyBonusesState = {
     [weekKey: string]: {
       isFinalized: boolean;
       finalizedAt?: string;
       finalizedBy?: string;
-      bonuses: { [userId: string]: { amount: number; note?: string; isPaid?: boolean; paidAt?: string; ingredientCount?: number } };
+      bonuses: {
+        [userId: string]: {
+          amount: number;
+          note?: string;
+          isPaid?: boolean;
+          paidAt?: string;
+          ingredientCount?: number;
+        };
+      };
     };
-  }>(() => {
+  };
+
+  const [weeklyBonuses, setWeeklyBonuses] = useState<WeeklyBonusesState>(() => {
     if (typeof window !== "undefined") {
       const saved = localStorage.getItem("fivem_sakura_weekly_bonuses");
       if (saved) {
@@ -598,7 +605,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const syncStateToCloud = async (key: string, value: any) => {
+  const syncStateToCloud = async (key: string, value: unknown) => {
     if (!supabase) return;
     try {
       await supabase.from("sakura_system_state").upsert({
@@ -654,24 +661,24 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
       if (!itemsErr && cloudItems) {
         if (cloudItems.length > 0) {
-          const mapped: Item[] = cloudItems.map((c: any) => ({
-            id: c.id,
-            code: c.code || undefined,
-            name: c.name,
-            type: c.type,
+          const mapped: Item[] = (cloudItems as Record<string, unknown>[]).map((c) => ({
+            id: String(c.id),
+            code: c.code ? String(c.code) : undefined,
+            name: String(c.name),
+            type: c.type as Item["type"],
             shopId: (c.shop_id as ShopId) || "sakura",
-            unit: c.unit,
+            unit: String(c.unit),
             current_stock: Number(c.current_stock),
             optimal_stock: Number(c.optimal_stock ?? 10),
             alert_threshold: Number(c.alert_threshold ?? 3),
             cost_price: Number(c.cost_price ?? 0),
             selling_price: Number(c.selling_price),
-            category_id: c.category_id || undefined,
-            category_name: c.category_name || undefined,
-            image_url: c.image_url || undefined,
-            recipe: c.recipe || [],
-            created_at: c.created_at,
-            updated_at: c.updated_at,
+            category_id: c.category_id ? String(c.category_id) : undefined,
+            category_name: c.category_name ? String(c.category_name) : undefined,
+            image_url: c.image_url ? String(c.image_url) : undefined,
+            recipe: (c.recipe as RecipeRequirement[]) || [],
+            created_at: String(c.created_at),
+            updated_at: String(c.updated_at),
           }));
           setItems(mapped);
         } else {
@@ -687,10 +694,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
       if (!salesErr && cloudSales) {
         if (cloudSales.length > 0) {
-          const mappedSales: Sale[] = cloudSales.map((s: any) => {
+          const mappedSales: Sale[] = (cloudSales as Record<string, unknown>[]).map((s) => {
             let discountAmount = s.discount_amount ? Number(s.discount_amount) : undefined;
             let subtotalAmount = s.subtotal_amount ? Number(s.subtotal_amount) : undefined;
-            let discountReason = s.discount_reason || undefined;
+            let discountReason = s.discount_reason ? String(s.discount_reason) : undefined;
 
             // notes からのフォールバックパース（例: "【調整値引き: -¥1,000 (常連割)】"）
             if (discountAmount === undefined && typeof s.notes === "string") {
@@ -707,20 +714,20 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             }
 
             return {
-              id: s.id,
+              id: String(s.id),
               shopId: (s.shop_id as ShopId) || "sakura",
-              staffName: s.staff_name,
-              staffUserId: s.staff_user_id || undefined,
+              staffName: String(s.staff_name || ""),
+              staffUserId: s.staff_user_id ? String(s.staff_user_id) : undefined,
               totalAmount: totalAmount,
               total_amount: totalAmount,
               subtotalAmount: subtotalAmount,
               discountAmount: discountAmount,
               discountReason: discountReason,
-              staff_name: s.staff_name,
-              payment_method: s.payment_method,
-              notes: s.notes || undefined,
-              items: s.items || [],
-              created_at: s.created_at,
+              staff_name: s.staff_name ? String(s.staff_name) : undefined,
+              payment_method: s.payment_method as Sale["payment_method"],
+              notes: s.notes ? String(s.notes) : undefined,
+              items: (s.items as Sale["items"]) || [],
+              created_at: String(s.created_at),
             };
           });
           setSales(mappedSales);
@@ -740,14 +747,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
       if (!logsErr && cloudLogs) {
         if (cloudLogs.length > 0) {
-          const mappedLogs: ActionLog[] = cloudLogs.map((l: any) => ({
-            id: l.id,
-            userName: l.user_name,
+          const mappedLogs: ActionLog[] = (cloudLogs as Record<string, unknown>[]).map((l) => ({
+            id: String(l.id),
+            userName: String(l.user_name || ""),
             userRole: l.user_role as Role,
             category: l.category as ActionCategory,
-            title: l.title,
-            detail: l.detail,
-            created_at: l.created_at,
+            title: String(l.title || ""),
+            detail: String(l.detail || ""),
+            created_at: String(l.created_at),
           }));
           setActionLogs(mappedLogs);
         } else if (initialActionLogs.length > 0) {
@@ -763,13 +770,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         .select("*");
 
       if (!stateErr && stateData) {
-        stateData.forEach((row: any) => {
-          if (row.key === "vault_balance" && typeof row.value?.balance === "number") {
-            setVaultBalance(row.value.balance);
+        (stateData as { key: string; value: unknown }[]).forEach((row) => {
+          const val = row.value as Record<string, unknown> | null;
+          if (row.key === "vault_balance" && typeof val?.balance === "number") {
+            setVaultBalance(val.balance);
           } else if (row.key === "weekly_bonuses" && row.value) {
-            setWeeklyBonuses(row.value);
+            setWeeklyBonuses(row.value as WeeklyBonusesState);
           } else if (row.key === "roles" && Array.isArray(row.value)) {
-            const mappedRoles: CustomRole[] = row.value.map((r: any) => {
+            const mappedRoles: CustomRole[] = (row.value as CustomRole[]).map((r) => {
               if (typeof r.baseAllowance === "number") return r;
               if (r.id === "role-owner") return { ...r, baseAllowance: 50000 };
               if (r.id === "role-manager" || r.isExecutive) return { ...r, baseAllowance: 40000 };
@@ -779,20 +787,20 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             });
             setRoles(mappedRoles);
           } else if (row.key === "users" && Array.isArray(row.value)) {
-            setUsers(row.value);
+            setUsers(row.value as StaffUser[]);
           } else if (row.key === "store_settings" && row.value) {
-            setStoreSettings((prev) => ({ ...prev, ...row.value }));
+            setStoreSettings((prev) => ({ ...prev, ...(row.value as Partial<StoreSettings>) }));
           } else if (row.key === "shops" && Array.isArray(row.value) && row.value.length > 0) {
-            setShops(row.value);
+            setShops(row.value as ShopDefinition[]);
           } else if (row.key === "site_branding" && row.value) {
-            setSiteBranding((prev) => ({ ...prev, ...row.value }));
+            setSiteBranding((prev) => ({ ...prev, ...(row.value as Partial<SiteBranding>) }));
           }
         });
       }
 
       setSyncStatus("connected");
     } catch (err) {
-      console.error("Supabase initial load error:", err);
+      console.error("Cloud fetch error:", err);
       setSyncStatus("offline");
     }
   }, []);
@@ -804,12 +812,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const client = supabase;
     if (!isSupabaseConfigured || !client) {
-      setSyncStatus("offline");
       return;
     }
 
     let isMounted = true;
-    fetchCloudData();
+    const initTimer = setTimeout(() => {
+      if (isMounted) {
+        fetchCloudData();
+      }
+    }, 0);
 
     // 2. Realtime 購読
     const channel = client
@@ -822,25 +833,25 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           if (!isMounted) return;
           const ev = payload.eventType;
           if (ev === "INSERT" || ev === "UPDATE") {
-            const c = payload.new as any;
+            const c = payload.new as Record<string, unknown>;
             const updatedItem: Item = {
-              id: c.id,
-              code: c.code || undefined,
-              name: c.name,
-              type: c.type,
+              id: String(c.id || ""),
+              code: c.code ? String(c.code) : undefined,
+              name: String(c.name || ""),
+              type: (c.type as ItemType) || "product",
               shopId: (c.shop_id as ShopId) || "sakura",
-              unit: c.unit,
-              current_stock: Number(c.current_stock),
+              unit: String(c.unit || "個"),
+              current_stock: Number(c.current_stock ?? 0),
               optimal_stock: Number(c.optimal_stock ?? 10),
               alert_threshold: Number(c.alert_threshold ?? 3),
               cost_price: Number(c.cost_price ?? 0),
-              selling_price: Number(c.selling_price),
-              category_id: c.category_id || undefined,
-              category_name: c.category_name || undefined,
-              image_url: c.image_url || undefined,
-              recipe: c.recipe || [],
-              created_at: c.created_at,
-              updated_at: c.updated_at,
+              selling_price: Number(c.selling_price ?? 0),
+              category_id: c.category_id ? String(c.category_id) : undefined,
+              category_name: c.category_name ? String(c.category_name) : undefined,
+              image_url: c.image_url ? String(c.image_url) : undefined,
+              recipe: (c.recipe as RecipeRequirement[]) || [],
+              created_at: String(c.created_at || ""),
+              updated_at: String(c.updated_at || ""),
             };
             setItems((prev) => {
               const idx = prev.findIndex((i) => i.id === updatedItem.id);
@@ -852,7 +863,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
               return [updatedItem, ...prev];
             });
           } else if (ev === "DELETE") {
-            const oldId = (payload.old as any).id;
+            const oldId = (payload.old as { id?: string })?.id;
             if (oldId) {
               setItems((prev) => prev.filter((i) => i.id !== oldId));
             }
@@ -867,19 +878,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           if (!isMounted) return;
           const ev = payload.eventType;
           if (ev === "INSERT" || ev === "UPDATE") {
-            const s = payload.new as any;
+            const s = payload.new as Record<string, unknown>;
             const newSale: Sale = {
-              id: s.id,
+              id: s.id as string,
               shopId: (s.shop_id as ShopId) || "sakura",
-              staffName: s.staff_name,
-              staffUserId: s.staff_user_id || undefined,
+              staffName: s.staff_name as string,
+              staffUserId: (s.staff_user_id as string) || undefined,
               totalAmount: Number(s.total_amount),
               total_amount: Number(s.total_amount),
-              staff_name: s.staff_name,
-              payment_method: s.payment_method,
-              notes: s.notes || undefined,
-              items: s.items || [],
-              created_at: s.created_at,
+              staff_name: s.staff_name as string,
+              payment_method: (s.payment_method as PaymentMethod) || undefined,
+              notes: (s.notes as string) || undefined,
+              items: (s.items as Sale["items"]) || [],
+              created_at: s.created_at as string,
             };
             setSales((prev) => {
               const idx = prev.findIndex((item) => item.id === newSale.id);
@@ -891,7 +902,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
               return [newSale, ...prev];
             });
           } else if (ev === "DELETE") {
-            const oldId = (payload.old as any).id;
+            const oldId = (payload.old as { id?: string })?.id;
             if (oldId) {
               setSales((prev) => prev.filter((item) => item.id !== oldId));
             }
@@ -906,15 +917,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           if (!isMounted) return;
           const ev = payload.eventType;
           if (ev === "INSERT" || ev === "UPDATE") {
-            const l = payload.new as any;
+            const l = payload.new as Record<string, unknown>;
             const newLog: ActionLog = {
-              id: l.id,
-              userName: l.user_name,
+              id: l.id as string,
+              userName: l.user_name as string,
               userRole: l.user_role as Role,
               category: l.category as ActionCategory,
-              title: l.title,
-              detail: l.detail,
-              created_at: l.created_at,
+              title: l.title as string,
+              detail: l.detail as string,
+              created_at: l.created_at as string,
             };
             setActionLogs((prev) => {
               const idx = prev.findIndex((item) => item.id === newLog.id);
@@ -926,7 +937,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
               return [newLog, ...prev];
             });
           } else if (ev === "DELETE") {
-            const oldId = (payload.old as any).id;
+            const oldId = (payload.old as { id?: string })?.id;
             if (oldId) {
               setActionLogs((prev) => prev.filter((item) => item.id !== oldId));
             }
@@ -939,14 +950,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         { event: "*", schema: "public", table: "sakura_system_state" },
         (payload) => {
           if (!isMounted) return;
-          const row = payload.new as any;
+          const row = payload.new as { key?: string; value?: unknown };
           if (!row || !row.key) return;
-          if (row.key === "vault_balance" && typeof row.value?.balance === "number") {
-            setVaultBalance(row.value.balance);
+          if (row.key === "vault_balance" && typeof (row.value as { balance?: number })?.balance === "number") {
+            setVaultBalance((row.value as { balance: number }).balance);
           } else if (row.key === "weekly_bonuses" && row.value) {
-            setWeeklyBonuses(row.value);
+            setWeeklyBonuses(row.value as WeeklyBonusesState);
           } else if (row.key === "roles" && Array.isArray(row.value)) {
-            const mappedRoles: CustomRole[] = row.value.map((r: any) => {
+            const mappedRoles: CustomRole[] = (row.value as CustomRole[]).map((r) => {
               if (typeof r.baseAllowance === "number") return r;
               if (r.id === "role-owner") return { ...r, baseAllowance: 50000 };
               if (r.id === "role-manager" || r.isExecutive) return { ...r, baseAllowance: 40000 };
@@ -956,13 +967,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             });
             setRoles(mappedRoles);
           } else if (row.key === "users" && Array.isArray(row.value)) {
-            setUsers(row.value);
+            setUsers(row.value as StaffUser[]);
           } else if (row.key === "store_settings" && row.value) {
-            setStoreSettings((prev) => ({ ...prev, ...row.value }));
+            setStoreSettings((prev) => ({ ...prev, ...(row.value as Partial<StoreSettings>) }));
           } else if (row.key === "shops" && Array.isArray(row.value) && row.value.length > 0) {
-            setShops(row.value);
+            setShops(row.value as ShopDefinition[]);
           } else if (row.key === "site_branding" && row.value) {
-            setSiteBranding((prev) => ({ ...prev, ...row.value }));
+            setSiteBranding((prev) => ({ ...prev, ...(row.value as Partial<SiteBranding>) }));
           }
         }
       )
@@ -989,12 +1000,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     return () => {
       isMounted = false;
+      clearTimeout(initTimer);
       window.removeEventListener("focus", handleFocus);
       window.removeEventListener("visibilitychange", handleFocus);
       clearInterval(intervalTimer);
       client.removeChannel(channel);
     };
-  }, []);
+  }, [fetchCloudData]);
 
   // 1. ログイン処理 (名前とPASS)
   const login = (username: string, pass: string): { success: boolean; message?: string } => {
@@ -1907,7 +1919,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     success: boolean;
     message: string;
   } => {
-    const saleEntries = Object.entries(quantities).filter(([_, qty]) => qty > 0);
+    const saleEntries = Object.entries(quantities).filter(([, qty]) => qty > 0);
     if (saleEntries.length === 0) {
       return { success: false, message: "販売する商品の個数を指定してください。" };
     }
@@ -2053,7 +2065,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     success: boolean;
     message: string;
   } => {
-    const craftEntries = Object.entries(quantities).filter(([_, qty]) => qty > 0);
+    const craftEntries = Object.entries(quantities).filter(([, qty]) => qty > 0);
     if (craftEntries.length === 0) {
       return { success: false, message: "作成する商品の個数を指定してください。" };
     }
@@ -2220,7 +2232,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     quantities: { [itemId: string]: number },
     shopId?: ShopId
   ): { success: boolean; message: string } => {
-    const entries = Object.entries(quantities).filter(([_, qty]) => qty > 0);
+    const entries = Object.entries(quantities).filter(([, qty]) => qty > 0);
     if (entries.length === 0) {
       return { success: false, message: "取り消す商品の個数を指定してください。" };
     }
@@ -2558,43 +2570,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         rollbackCraftItems,
         cancelCraftByLog,
         refreshData,
-        addSale: async (saleData: any): Promise<Sale> => {
-          const totalAmt = saleData.total_amount || saleData.totalAmount || 0;
-          const newSale: Sale = {
-            id: `sale-${Date.now().toString().slice(-6)}`,
-            shopId: "sakura",
-            staffName: currentUser ? currentUser.displayName : "店員",
-            staffUserId: currentUser ? currentUser.id : undefined,
-            totalAmount: totalAmt,
-            total_amount: totalAmt,
-            staff_name: currentUser ? currentUser.displayName : "店員",
-            items: (saleData.items || []).map((it: any) => ({
-              itemId: it.item_id || it.itemId || "",
-              itemName: it.item_name || it.itemName || "",
-              quantity: it.quantity || 1,
-              unitPrice: it.unit_price || it.unitPrice || 0,
-              subtotal: (it.unit_price || it.unitPrice || 0) * (it.quantity || 1),
-              item_id: it.item_id || it.itemId || "",
-              item_name: it.item_name || it.itemName || "",
-            })),
-            created_at: new Date().toISOString(),
-          };
-          setSales((prev) => [newSale, ...prev]);
-          syncSaleToCloud(newSale);
-          return newSale;
-        },
-        recordStockTransaction: (params: any) => {
-          const itemId = typeof params === "object" ? params.itemId || params.item_id : params;
-          const qty = typeof params === "object" ? params.quantity || 0 : arguments[2] || 0;
-          const reason = typeof params === "object" ? params.reason : arguments[3] || "手動調整";
-          const type = typeof params === "object" ? params.type : arguments[1];
-          const delta = type === "inbound" ? qty : -qty;
-
-          const item = items.find((i) => i.id === itemId);
-          if (item) {
-            adjustStock(itemId, Math.max(0, item.current_stock + delta), reason);
-          }
-        },
       }}
     >
       {children}

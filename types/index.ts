@@ -145,32 +145,6 @@ export interface Sale {
   notes?: string;
 }
 
-export type TransactionType = "inbound" | "outbound" | "waste" | "craft" | "sale" | "adjust";
-
-export interface StockTransaction {
-  id: string;
-  item_id: string;
-  item_name: string;
-  transaction_type: TransactionType;
-  quantity: number;
-  previous_stock: number;
-  new_stock: number;
-  reason?: string;
-  user_name?: string;
-  created_at: string;
-}
-
-export interface OrderRecord {
-  id: string;
-  item_id: string;
-  item_name: string;
-  supplier_name: string;
-  quantity: number;
-  expected_delivery: string;
-  status: "ordered" | "delivered" | "cancelled";
-  staff_name: string;
-  created_at: string;
-}
 
 export type ActionCategory =
   | "sale"       // 売る

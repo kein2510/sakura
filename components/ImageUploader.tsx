@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useState, useRef, useEffect } from "react";
-import { UploadCloud, Image as ImageIcon, Loader2, CheckCircle, RefreshCw, X, Link as LinkIcon } from "lucide-react";
+import React, { useState, useRef } from "react";
+import { UploadCloud, Loader2, RefreshCw, X, Link as LinkIcon } from "lucide-react";
 import { uploadImage } from "@/lib/storage";
 
 interface ImageUploaderProps {
@@ -19,13 +19,16 @@ export default function ImageUploader({
 }: ImageUploaderProps) {
   const [isUploading, setIsUploading] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string>(currentImageUrl || "");
+  const [prevImageUrl, setPrevImageUrl] = useState(currentImageUrl);
+
+  if (currentImageUrl !== prevImageUrl) {
+    setPrevImageUrl(currentImageUrl);
+    setPreviewUrl(currentImageUrl || "");
+  }
+
   const [isDragOver, setIsDragOver] = useState(false);
   const [showUrlInput, setShowUrlInput] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    setPreviewUrl(currentImageUrl || "");
-  }, [currentImageUrl]);
 
   const handleFile = async (file: File) => {
     if (!file.type.startsWith("image/")) {

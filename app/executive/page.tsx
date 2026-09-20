@@ -12,19 +12,13 @@ import {
   Edit2,
   Save,
   Plus,
-  Minus,
   Sparkles,
   Utensils,
-  Layers,
   History,
   Image as ImageIcon,
-  DollarSign,
-  AlertCircle,
   CheckCircle2,
   Eye,
   EyeOff,
-  ChevronRight,
-  Shield,
   ArrowRight,
   Coins,
   Award,
@@ -45,14 +39,10 @@ import {
   ArrowDown,
   ArrowUpDown,
   Sliders,
-  Hammer,
   Boxes,
   RotateCcw,
   BarChart3,
-  PieChart,
-  ArrowDownWideNarrow,
   Package,
-  Building2,
 } from "lucide-react";
 import Link from "next/link";
 import { useApp } from "@/context/AppContext";
@@ -62,19 +52,14 @@ import ImageUploader from "@/components/ImageUploader";
 import { getThemeStyles } from "@/lib/theme";
 import {
   RecipeRequirement,
-  Role,
   CustomRole,
   Item,
-  StaffPerformance,
-  WeeklySummary,
   StaffWeeklyStat,
   ShopId,
-  SHOPS,
   ShopDefinition,
-  SiteBranding,
   StaffUser,
 } from "@/types";
-import { getRecentWeeks, WeekPeriod, isDateInWeek } from "@/lib/dateUtils";
+import { getRecentWeeks, isDateInWeek } from "@/lib/dateUtils";
 
 export default function ExecutivePage() {
   const {
@@ -82,11 +67,8 @@ export default function ExecutivePage() {
     users,
     addUser,
     updateUserPass,
-    updateUserRole,
-    updateUserBonus,
     updateUsersOrder,
     deleteUser,
-    getStaffPerformances,
     storeSettings,
     updateStoreSettings,
     shops,
@@ -124,7 +106,18 @@ export default function ExecutivePage() {
 
   const theme = getThemeStyles(siteBranding.themeColor);
 
-  const [activeTab, setActiveTab] = useState<"summary" | "statistics" | "users" | "roles" | "bonus" | "recipes" | "items" | "logs" | "settings">("summary");
+  type ExecutiveTab =
+    | "summary"
+    | "statistics"
+    | "users"
+    | "roles"
+    | "bonus"
+    | "recipes"
+    | "items"
+    | "logs"
+    | "settings";
+
+  const [activeTab, setActiveTab] = useState<ExecutiveTab>("summary");
   const [realtimeNotice, setRealtimeNotice] = useState<string | null>(null);
 
   // 幹部ページの Supabase Realtime サブスクリプション
@@ -196,7 +189,6 @@ export default function ExecutivePage() {
   // 週ごとの入力値を安全に管理するためのキー `${weekKey}_${userId}`
   const [weeklyBonusInputs, setWeeklyBonusInputs] = useState<{ [compositeKey: string]: number }>({});
   const [weeklyBonusNotes, setWeeklyBonusNotes] = useState<{ [compositeKey: string]: string }>({});
-  const [staffIngredientInputs, setStaffIngredientInputs] = useState<{ [compositeKey: string]: number }>({});
   const [storeRemainingBonusRate, setStoreRemainingBonusRate] = useState<number>(() => storeSettings.storeRemainingBonusRate ?? 10); // 店舗手元純残りからのボーナス還元率 10%
   const [craftRewardRate, setCraftRewardRate] = useState<number>(() => storeSettings.craftRewardRate ?? 100);                 // クラフト仕込み手当 100円/個
   const [ingredientRewardRate, setIngredientRewardRate] = useState<number>(() => storeSettings.ingredientRewardRate ?? 50);   // 素材調達手当 50円/個
@@ -255,13 +247,15 @@ export default function ExecutivePage() {
   const [brandLogoUrl, setBrandLogoUrl] = useState(siteBranding.logoUrl);
   const [brandThemeColor, setBrandThemeColor] = useState(siteBranding.themeColor);
   const [brandSavedNotice, setBrandSavedNotice] = useState(false);
+  const [prevBranding, setPrevBranding] = useState(siteBranding);
 
-  useEffect(() => {
+  if (siteBranding !== prevBranding) {
+    setPrevBranding(siteBranding);
     setBrandSiteName(siteBranding.siteName);
     setBrandSiteSubtitle(siteBranding.siteSubtitle);
     setBrandLogoUrl(siteBranding.logoUrl);
     setBrandThemeColor(siteBranding.themeColor);
-  }, [siteBranding]);
+  }
 
   // --- 店舗（ショップ）追加・編集 state ---
   const [isAddShopModalOpen, setIsAddShopModalOpen] = useState(false);
@@ -580,12 +574,9 @@ export default function ExecutivePage() {
     return weeklyBonusNotes[key] !== undefined ? weeklyBonusNotes[key] : (currentNote || "");
   };
 
-  // 各スタッフの素材調達数ヘルパー（手動入力または自動集計値）
+  // 各スタッフの素材調達数ヘルパー（自動集計値）
   const getStaffIngredientCount = (stat: StaffWeeklyStat) => {
-    const key = `${selectedWeekKey}_${stat.userId}`;
-    return staffIngredientInputs[key] !== undefined
-      ? staffIngredientInputs[key]
-      : (stat.ingredientItemsCount || 0);
+    return stat.ingredientItemsCount || 0;
   };
 
   // スタッフの役職に応じた基本手当を取得
@@ -1000,23 +991,25 @@ export default function ExecutivePage() {
 
       {/* 幹部タブラベル */}
       <div className="flex flex-wrap gap-2 border-b border-stone-800 pb-3">
-        {[
-          { id: "summary", label: "📊 店舗運営サマリー", icon: TrendingUp },
-          { id: "statistics", label: "📈 詳細統計一覧", icon: BarChart3 },
-          { id: "users", label: `👥 従業員 & PASS管理 (${users.length}名)`, icon: Users },
-          { id: "roles", label: `🏷️ 役職（ロール）設定 (${roles.length}種)`, icon: Tag },
-          { id: "bonus", label: "💰 ボーナス査定 & 支給管理", icon: Coins },
-          { id: "recipes", label: `⚙️ レシピ & 価格設定 (${products.length}商品)`, icon: Sparkles },
-          { id: "items", label: `🍱 商品・素材登録 & 変更 (${items.length}品目)`, icon: ImageIcon },
-          { id: "logs", label: `📜 店舗操作ログ監査 (${actionLogs.length}件)`, icon: History },
-          { id: "settings", label: "⚙️ 店舗・機能利用設定", icon: Sliders },
-        ].map((tab) => {
+        {(
+          [
+            { id: "summary", label: "📊 店舗運営サマリー", icon: TrendingUp },
+            { id: "statistics", label: "📈 詳細統計一覧", icon: BarChart3 },
+            { id: "users", label: `👥 従業員 & PASS管理 (${users.length}名)`, icon: Users },
+            { id: "roles", label: `🏷️ 役職（ロール）設定 (${roles.length}種)`, icon: Tag },
+            { id: "bonus", label: "💰 ボーナス査定 & 支給管理", icon: Coins },
+            { id: "recipes", label: `⚙️ レシピ & 価格設定 (${products.length}商品)`, icon: Sparkles },
+            { id: "items", label: `🍱 商品・素材登録 & 変更 (${items.length}品目)`, icon: ImageIcon },
+            { id: "logs", label: `📜 店舗操作ログ監査 (${actionLogs.length}件)`, icon: History },
+            { id: "settings", label: "⚙️ 店舗・機能利用設定", icon: Sliders },
+          ] as { id: ExecutiveTab; label: string; icon: typeof TrendingUp }[]
+        ).map((tab) => {
           const isActive = activeTab === tab.id;
           const Icon = tab.icon;
           return (
             <button
               key={tab.id}
-              onClick={() => setActiveTab(tab.id as any)}
+              onClick={() => setActiveTab(tab.id)}
               className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-2 cursor-pointer ${
                 isActive
                   ? theme.tabActive
@@ -1558,8 +1551,6 @@ export default function ExecutivePage() {
 
         let totalStoreRemaining = 0;
         let totalIncentive = 0;
-        let totalDiscountAmount = 0;
-        let totalDiscountCount = 0;
 
         filteredSales.forEach((s) => {
           const amt = s.totalAmount ?? s.total_amount ?? 0;
@@ -1571,11 +1562,6 @@ export default function ExecutivePage() {
             const rem = Math.round(amt * (rate / 100));
             totalStoreRemaining += rem;
             totalIncentive += amt - rem;
-          }
-          const disc = s.discountAmount ?? 0;
-          if (disc > 0) {
-            totalDiscountAmount += disc;
-            totalDiscountCount += 1;
           }
         });
 

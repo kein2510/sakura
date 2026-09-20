@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { X, Image as ImageIcon, Upload, CheckCircle2, DollarSign, Tag, Info, Sparkles } from "lucide-react";
+import { X, Image as ImageIcon, CheckCircle2 } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import { ItemType } from "@/types";
 import ImageUploader from "./ImageUploader";
@@ -25,28 +25,12 @@ export default function ProductModal({ isOpen, onClose, defaultType = "product" 
   const [costPrice, setCostPrice] = useState<number>(1000);
   const [sellingPrice, setSellingPrice] = useState<number>(defaultType === "product" ? 2800 : 0);
   const [imageUrl, setImageUrl] = useState<string>("");
-  const [imagePreview, setImagePreview] = useState<string>("");
   const [successMessage, setSuccessMessage] = useState<string>("");
 
   if (!isOpen) return null;
 
-  // ローカル画像選択のプレビューハンドラー
-  const handleImageFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const result = reader.result as string;
-        setImagePreview(result);
-        setImageUrl(result); // Supabase Storage連携時はここからアップロード
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-
   const handleSelectPresetImage = (url: string) => {
     setImageUrl(url);
-    setImagePreview(url);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -73,7 +57,6 @@ export default function ProductModal({ isOpen, onClose, defaultType = "product" 
       setSuccessMessage("");
       setName("");
       setCode("");
-      setImagePreview("");
       setImageUrl("");
       onClose();
     }, 1200);
@@ -226,10 +209,7 @@ export default function ProductModal({ isOpen, onClose, defaultType = "product" 
             <div className="p-4 rounded-xl border border-stone-200 bg-stone-50/70 space-y-3">
               <ImageUploader
                 currentImageUrl={imageUrl}
-                onImageUploaded={(url) => {
-                  setImageUrl(url);
-                  setImagePreview(url);
-                }}
+                onImageUploaded={(url) => setImageUrl(url)}
                 label="商品・素材写真のアップロード (ドラッグ＆ドロップまたはタップ)"
               />
 

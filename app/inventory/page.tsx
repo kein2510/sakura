@@ -2,25 +2,20 @@
 
 import React, { useState, useEffect } from "react";
 import {
-  Package,
   Boxes,
   Search,
   AlertTriangle,
-  CheckCircle2,
   Plus,
-  Minus,
-  ArrowRight,
   History,
   Sparkles,
   Edit2,
-  Utensils,
   Layers,
   Radio,
   Undo2,
 } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import { formatCurrency } from "@/lib/utils";
-import { Item, ShopId, SHOPS } from "@/types";
+import { Item } from "@/types";
 import { supabase } from "@/lib/supabase";
 
 export default function InventoryPage() {
@@ -34,7 +29,6 @@ export default function InventoryPage() {
     refreshData,
     cancelCraftByLog,
     shops,
-    siteBranding,
   } = useApp();
   const [selectedTab, setSelectedTab] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
@@ -70,8 +64,8 @@ export default function InventoryPage() {
         (payload) => {
           refreshData();
           if (payload.eventType === "UPDATE") {
-            const newItem = payload.new as any;
-            setRealtimeNotice(`「${newItem.name}」の在庫が自動同期されました (現在: ${newItem.current_stock}${newItem.unit})`);
+            const newItem = payload.new as { name?: string; current_stock?: number; unit?: string };
+            setRealtimeNotice(`「${newItem.name || ""}」の在庫が自動同期されました (現在: ${newItem.current_stock ?? 0}${newItem.unit || ""})`);
           } else if (payload.eventType === "INSERT") {
             setRealtimeNotice("新しい商品・素材が自動追加されました！");
           } else if (payload.eventType === "DELETE") {
@@ -130,14 +124,6 @@ export default function InventoryPage() {
     setAdjustingItem(null);
   };
 
-  const handleQuickDelta = (item: Item, delta: number) => {
-    const target = Math.max(0, item.current_stock + delta);
-    adjustStock(
-      item.id,
-      target,
-      delta > 0 ? `クイック補充 (+${delta})` : `クイック消費 (${delta})`
-    );
-  };
 
   return (
     <div className="space-y-6 max-w-[1680px] w-full mx-auto px-2.5 sm:px-4 md:px-6 py-4 pb-16">

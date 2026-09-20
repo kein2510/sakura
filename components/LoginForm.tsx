@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { Lock, User, KeyRound, AlertCircle, ArrowRight, Eye, EyeOff, Shield } from "lucide-react";
+import { User, KeyRound, AlertCircle, ArrowRight, Eye, EyeOff, Shield } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import { getThemeStyles } from "@/lib/theme";
 import { cn } from "@/lib/utils";

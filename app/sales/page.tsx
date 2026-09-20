@@ -3,30 +3,23 @@
 import React, { useState, useEffect, useMemo } from "react";
 import {
   Receipt,
-  Calendar,
-  Filter,
   Search,
   Utensils,
   Award,
-  Sparkles,
   Radio,
   Trash2,
   AlertCircle,
   CheckCircle2,
   TrendingUp,
   User,
-  Store,
   Crown,
-  Medal,
   CalendarDays,
-  ChevronRight,
-  Clock,
   ShoppingBag,
   Tag,
 } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import { formatCurrency, formatDate } from "@/lib/utils";
-import { ShopId, SHOPS } from "@/types";
+import { ShopId } from "@/types";
 import { supabase } from "@/lib/supabase";
 import { getSunday, getSaturday } from "@/lib/dateUtils";
 
@@ -70,7 +63,7 @@ export default function SalesPage() {
         (payload) => {
           refreshData();
           if (payload.eventType === "INSERT") {
-            const row = payload.new as any;
+            const row = payload.new as { staff_name?: string; total_amount?: number };
             setRealtimeNotice(`【売上同期】${row.staff_name || "スタッフ"}が売上 ¥${Number(row.total_amount).toLocaleString()} を登録しました！`);
           } else if (payload.eventType === "DELETE") {
             setRealtimeNotice("【伝票同期】売上伝票の取り消し・削除が同期されました");
