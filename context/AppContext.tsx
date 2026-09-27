@@ -268,9 +268,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // アイテム・在庫状態
   const [items, setItems] = useState<Item[]>(() => {
     if (typeof window !== "undefined") {
-      const saved = localStorage.getItem("fivem_sakura_items");
-      if (saved) {
-        try {
+      try {
+        const saved = localStorage.getItem("fivem_sakura_items");
+        if (saved) {
+          // 過去の破損・肥大化データ(100KB超)の場合は容量超過クラッシュを防ぐためクリアしてクラウドと再同期
+          if (saved.length > 100000) {
+            localStorage.removeItem("fivem_sakura_items");
+            return initialItems;
+          }
           const parsed: Item[] = JSON.parse(saved);
           const existingIds = new Set(parsed.map((i) => i.id));
           const newDefaults = initialItems.filter((i) => !existingIds.has(i.id));
@@ -281,9 +286,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             return item;
           });
           return [...normalized, ...newDefaults];
-        } catch {
-          // ignore
         }
+      } catch (err) {
+        console.warn("Failed to load items from localStorage:", err);
       }
     }
     return initialItems;
@@ -432,74 +437,84 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return DEFAULT_BRANDING;
   });
 
+  // LocalStorage 安全書き込みヘルパー（容量超過 QuotaExceededError によるクラッシュを完全に防ぐ）
+  const safeSetLocalStorage = (key: string, value: string) => {
+    if (typeof window === "undefined") return;
+    try {
+      localStorage.setItem(key, value);
+    } catch (err) {
+      console.warn(`LocalStorage write skipped for ${key}:`, err);
+      // 万一容量オーバー等の場合、大容量のアイテムキャッシュを削除して復帰
+      try {
+        localStorage.removeItem("fivem_sakura_items");
+      } catch {
+        // ignore
+      }
+    }
+  };
+
   // ローカル永続化 (オフラインバックアップ用)
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      localStorage.setItem("fivem_sakura_store_settings", JSON.stringify(storeSettings));
-    }
+    safeSetLocalStorage("fivem_sakura_store_settings", JSON.stringify(storeSettings));
   }, [storeSettings]);
 
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      localStorage.setItem("fivem_sakura_shops", JSON.stringify(shops));
-    }
+    safeSetLocalStorage("fivem_sakura_shops", JSON.stringify(shops));
   }, [shops]);
 
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      localStorage.setItem("fivem_sakura_site_branding", JSON.stringify(siteBranding));
-    }
+    safeSetLocalStorage("fivem_sakura_site_branding", JSON.stringify(siteBranding));
   }, [siteBranding]);
 
-  // ローカル永続化 (オフラインバックアップ用)
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      localStorage.setItem("fivem_sakura_vault_balance", vaultBalance.toString());
-    }
+    safeSetLocalStorage("fivem_sakura_vault_balance", vaultBalance.toString());
   }, [vaultBalance]);
 
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      localStorage.setItem("fivem_sakura_roles", JSON.stringify(roles));
-    }
+    safeSetLocalStorage("fivem_sakura_roles", JSON.stringify(roles));
   }, [roles]);
 
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      localStorage.setItem("fivem_sakura_users", JSON.stringify(users));
-    }
+    safeSetLocalStorage("fivem_sakura_users", JSON.stringify(users));
   }, [users]);
 
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      localStorage.setItem("fivem_sakura_weekly_bonuses", JSON.stringify(weeklyBonuses));
-    }
+    safeSetLocalStorage("fivem_sakura_weekly_bonuses", JSON.stringify(weeklyBonuses));
   }, [weeklyBonuses]);
 
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      localStorage.setItem("fivem_sakura_sales", JSON.stringify(sales));
-    }
+    safeSetLocalStorage("fivem_sakura_sales", JSON.stringify(sales));
   }, [sales]);
 
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      localStorage.setItem("fivem_sakura_action_logs", JSON.stringify(actionLogs));
-    }
+    safeSetLocalStorage("fivem_sakura_action_logs", JSON.stringify(actionLogs));
   }, [actionLogs]);
 
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      localStorage.setItem("fivem_sakura_items", JSON.stringify(items));
+    // items のローカルキャッシュ保存時、長大な Base64 画像があれば除外して軽量化保存（ブラウザの5MB制限保護）
+    try {
+      const lightweightItems = items.map((item) => {
+        if (item.image_url && item.image_url.startsWith("data:image/") && item.image_url.length > 50000) {
+          return { ...item, image_url: undefined };
+        }
+        return item;
+      });
+      safeSetLocalStorage("fivem_sakura_items", JSON.stringify(lightweightItems));
+    } catch {
+      // ignore
     }
   }, [items]);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
-      if (currentUser) {
-        sessionStorage.setItem("fivem_sakura_session", JSON.stringify(currentUser));
-      } else {
-        sessionStorage.removeItem("fivem_sakura_session");
+      try {
+        if (currentUser) {
+          sessionStorage.setItem("fivem_sakura_session", JSON.stringify(currentUser));
+        } else {
+          sessionStorage.removeItem("fivem_sakura_session");
+        }
+      } catch {
+        // ignore
       }
     }
   }, [currentUser]);
