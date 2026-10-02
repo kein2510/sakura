@@ -15,6 +15,7 @@ export interface StaffUser {
   username: string; // ログイン用名前 (例: kein)
   pass: string;     // ログイン用PASS (例: 001)
   displayName: string;
+  gameId?: string;  // ゲーム内ID (FiveM ID - 幹部のみ閲覧可能)
   role: Role;       // 互換用基本権限 ("executive" | "staff")
   roleId?: string;  // 紐づくカスタムロールのID
   roleName?: string;// 役職の表示名 (例: "店主")
@@ -188,6 +189,7 @@ export interface StaffPerformance {
   userId: string;
   username: string;
   displayName: string;
+  gameId?: string;             // ゲーム内ID (幹部のみ閲覧可能)
   role: Role;
   roleId?: string;
   roleName?: string;
@@ -215,6 +217,7 @@ export interface StaffWeeklyStat {
   userId: string;
   username: string;
   displayName: string;
+  gameId?: string;             // ゲーム内ID (幹部のみ閲覧可能)
   role: Role;
   roleId?: string;
   roleName?: string;

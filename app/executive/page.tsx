@@ -45,6 +45,7 @@ import {
   Package,
   Folder,
   FolderPlus,
+  Gamepad2,
 } from "lucide-react";
 import Link from "next/link";
 import { useApp } from "@/context/AppContext";
@@ -70,6 +71,7 @@ export default function ExecutivePage() {
     users,
     addUser,
     updateUserPass,
+    updateUserGameId,
     updateUsersOrder,
     deleteUser,
     storeSettings,
@@ -178,11 +180,14 @@ export default function ExecutivePage() {
   // --- 従業員管理 state ---
   const [newUsername, setNewUsername] = useState("");
   const [newDisplayName, setNewDisplayName] = useState("");
+  const [newGameId, setNewGameId] = useState("");
   const [newPass, setNewPass] = useState("");
   const [newUserRoleId, setNewUserRoleId] = useState<string>(roles[0]?.id || "role-staff");
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [editPassInput, setEditPassInput] = useState("");
   const [showPassMap, setShowPassMap] = useState<{ [userId: string]: boolean }>({});
+  const [editingGameIdUserId, setEditingGameIdUserId] = useState<string | null>(null);
+  const [editGameIdInput, setEditGameIdInput] = useState("");
 
   // --- 役職（ロール）管理 state ---
   const [newRoleName, setNewRoleName] = useState("");
@@ -378,6 +383,7 @@ export default function ExecutivePage() {
     addUser({
       username: newUsername.trim(),
       displayName: newDisplayName.trim() || newUsername.trim(),
+      gameId: newGameId.trim() || undefined,
       pass: newPass.trim(),
       role: selectedRole.isExecutive ? "executive" : "staff",
       roleId: selectedRole.id,
@@ -386,6 +392,7 @@ export default function ExecutivePage() {
 
     setNewUsername("");
     setNewDisplayName("");
+    setNewGameId("");
     setNewPass("");
     alert(`従業員「${newDisplayName.trim() || newUsername.trim()}」を追加しました！`);
   };
@@ -549,6 +556,13 @@ export default function ExecutivePage() {
     updateUserPass(userId, editPassInput.trim());
     setEditingUserId(null);
     setEditPassInput("");
+  };
+
+  // 従業員ゲーム内ID保存
+  const handleSaveGameId = (userId: string) => {
+    updateUserGameId(userId, editGameIdInput.trim());
+    setEditingGameIdUserId(null);
+    setEditGameIdInput("");
   };
 
   // 解雇ロールのスタッフ判定 (ロール名に「解雇」が含まれるか判定)
@@ -1813,6 +1827,7 @@ export default function ExecutivePage() {
             userId: u.id,
             username: u.username,
             displayName: u.displayName,
+            gameId: u.gameId,
             roleName: u.roleName || (u.role === "executive" ? "幹部" : "スタッフ"),
             isExecutive: u.role === "executive",
             salesAmount,
@@ -2354,10 +2369,15 @@ export default function ExecutivePage() {
                               {getRankBadge(idx)}
                             </td>
                             <td className="py-3 px-3 font-black text-stone-100 whitespace-nowrap">
-                              <div className="flex items-center gap-1.5">
+                              <div className="flex items-center gap-1.5 flex-wrap">
                                 <span>{staff.displayName}</span>
                                 {staff.isExecutive && (
                                   <span className="text-[10px] text-amber-400">👑</span>
+                                )}
+                                {staff.gameId && (
+                                  <span className="text-[10px] font-mono font-bold text-amber-300 bg-amber-950/60 px-1.5 py-0.2 rounded border border-amber-600/40">
+                                    🎮 #{staff.gameId}
+                                  </span>
                                 )}
                               </div>
                             </td>
@@ -3081,6 +3101,28 @@ export default function ExecutivePage() {
               </div>
 
               <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-bold text-stone-300 flex items-center gap-1.5">
+                    <Gamepad2 className="w-3.5 h-3.5 text-amber-400" />
+                    ゲーム内ID (FiveM ID):
+                  </label>
+                  <span className="text-[10px] text-amber-400 font-bold bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20">
+                    🔒 幹部のみ表示
+                  </span>
+                </div>
+                <input
+                  type="text"
+                  placeholder="例: 1234, ID-5678"
+                  value={newGameId}
+                  onChange={(e) => setNewGameId(e.target.value)}
+                  className="w-full px-3 py-2 bg-stone-950 rounded-xl border border-stone-700 text-xs focus:ring-2 focus:ring-amber-500 font-mono font-bold text-white placeholder:text-stone-600"
+                />
+                <p className="text-[10px] text-stone-500 mt-0.5">
+                  ※一般スタッフ画面には非公開で、この幹部管理ページでのみ閲覧・管理されます
+                </p>
+              </div>
+
+              <div>
                 <label className="block text-xs font-bold text-stone-300 mb-1">
                   役職（ロール）の割り当て:
                 </label>
@@ -3276,9 +3318,38 @@ export default function ExecutivePage() {
                                   </span>
                                 )}
                               </div>
-                              <span className="text-[11px] text-stone-400 font-mono">
-                                ID: @{u.username}
-                              </span>
+                              <div className="flex items-center gap-2 flex-wrap mt-1">
+                                <span className="text-[11px] text-stone-400 font-mono">
+                                  ID: @{u.username}
+                                </span>
+                                {/* ゲーム内IDバッジ (幹部のみ表示) */}
+                                <div className="flex items-center gap-1">
+                                  <span
+                                    className={`inline-flex items-center gap-1 text-[11px] font-mono px-2 py-0.5 rounded-lg border ${
+                                      u.gameId
+                                        ? "bg-amber-950/60 text-amber-300 border-amber-600/50 font-bold"
+                                        : "bg-stone-950/60 text-stone-500 border-stone-800"
+                                    }`}
+                                  >
+                                    <Gamepad2 className="w-3 h-3 text-amber-400 shrink-0" />
+                                    <span>ゲーム内ID:</span>
+                                    <strong className={u.gameId ? "text-amber-200" : "text-stone-500 font-normal"}>
+                                      {u.gameId ? `#${u.gameId}` : "未設定"}
+                                    </strong>
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setEditingGameIdUserId(u.id);
+                                      setEditGameIdInput(u.gameId || "");
+                                    }}
+                                    className="p-1 rounded-md text-stone-400 hover:text-white hover:bg-stone-800 text-[10px] font-bold transition-colors cursor-pointer"
+                                    title="ゲーム内IDを編集"
+                                  >
+                                    <Edit2 className="w-3 h-3" />
+                                  </button>
+                                </div>
+                              </div>
                             </div>
                           </div>
 
@@ -3384,6 +3455,41 @@ export default function ExecutivePage() {
                             >
                               キャンセル
                             </button>
+                          </div>
+                        )}
+
+                        {/* インライン ゲーム内ID 編集フォーム */}
+                        {editingGameIdUserId === u.id && (
+                          <div className="mt-3 pt-3 border-t border-stone-800 flex items-center gap-2 flex-wrap">
+                            <span className="text-xs font-bold text-amber-400 flex items-center gap-1 shrink-0">
+                              <Gamepad2 className="w-3.5 h-3.5" />
+                              ゲーム内ID:
+                            </span>
+                            <input
+                              type="text"
+                              placeholder="例: 1234, ID-5678"
+                              value={editGameIdInput}
+                              onChange={(e) => setEditGameIdInput(e.target.value)}
+                              className="px-3 py-1 bg-stone-950 rounded-lg border border-stone-700 text-xs font-mono font-bold w-40 text-white focus:border-amber-500"
+                              autoFocus
+                            />
+                            <button
+                              type="button"
+                              onClick={() => handleSaveGameId(u.id)}
+                              className="px-3 py-1 rounded-lg bg-amber-600 hover:bg-amber-500 text-stone-950 font-black text-xs shadow-xs cursor-pointer"
+                            >
+                              保存
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setEditingGameIdUserId(null)}
+                              className="px-3 py-1 rounded-lg bg-stone-800 hover:bg-stone-700 text-stone-400 text-xs cursor-pointer"
+                            >
+                              キャンセル
+                            </button>
+                            <span className="text-[10px] text-stone-500 ml-2">
+                              ※空欄で保存すると未設定になります
+                            </span>
                           </div>
                         )}
                       </div>
@@ -3938,12 +4044,17 @@ export default function ExecutivePage() {
                           <div className="w-6 h-6 rounded-lg bg-stone-800 flex items-center justify-center text-xs shrink-0">
                             {stat.role === "executive" ? "👑" : "👤"}
                           </div>
-                          <h3 className="font-bold text-sm text-white flex items-center gap-1.5">
+                          <h3 className="font-bold text-sm text-white flex items-center gap-1.5 flex-wrap">
                             {stat.displayName}
                             <span className="text-[10px] font-normal px-2 py-0.2 rounded-full bg-stone-800 text-stone-400 border border-stone-700">
                               {stat.roleName || (stat.role === "executive" ? "幹部" : "スタッフ")}
                             </span>
                             <span className="text-[11px] text-stone-500 font-mono">@{stat.username}</span>
+                            {stat.gameId && (
+                              <span className="text-[10px] font-mono font-bold text-amber-300 bg-amber-950/60 px-1.5 py-0.2 rounded border border-amber-600/40">
+                                🎮 #{stat.gameId}
+                              </span>
+                            )}
                           </h3>
                         </div>
 
@@ -4407,11 +4518,16 @@ export default function ExecutivePage() {
                             {stat.role === "executive" ? "👑" : "👤"}
                           </div>
                           <div>
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 flex-wrap">
                               <span className="font-bold text-white text-sm">{stat.displayName}</span>
                               <span className="text-[10px] text-stone-400 px-2 py-0.2 rounded-full bg-stone-800 border border-stone-700">
                                 {stat.roleName}
                               </span>
+                              {stat.gameId && (
+                                <span className="text-[10px] font-mono font-bold text-amber-300 bg-amber-950/60 px-1.5 py-0.2 rounded border border-amber-600/40">
+                                  🎮 #{stat.gameId}
+                                </span>
+                              )}
                             </div>
                             <div className="text-[11px] text-stone-400 mt-0.5 flex items-center gap-2 flex-wrap">
                               <span>今週ボーナス: <strong className="text-white font-mono">{formatCurrency(stat.bonusAmount)}</strong></span>

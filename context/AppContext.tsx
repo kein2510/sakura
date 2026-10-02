@@ -96,6 +96,8 @@ interface AppContextType {
   // 従業員管理 (幹部のみ)
   users: StaffUser[];
   addUser: (user: Omit<StaffUser, "id" | "created_at">) => void;
+  updateUser: (userId: string, updates: Partial<StaffUser>) => void;
+  updateUserGameId: (userId: string, gameId: string) => void;
   updateUserPass: (userId: string, newPass: string) => void;
   updateUserRole: (userId: string, role: Role) => void;
   updateUserBonus: (userId: string, bonusAmount: number, note?: string) => void;
@@ -1139,6 +1141,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     username,
     pass,
     displayName,
+    gameId,
     role,
     roleId,
     roleName,
@@ -1153,6 +1156,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       username: username.trim(),
       pass: pass.trim(),
       displayName: displayName.trim() || username.trim(),
+      gameId: gameId?.trim() || undefined,
       role: finalRole,
       roleId: finalRoleId,
       roleName: finalRoleName,
@@ -1165,7 +1169,43 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     logAction({
       category: "user",
       title: "従業員の追加",
-      detail: `新しい従業員「${newUser.displayName} (PASS: ${newUser.pass} / 役職: ${newUser.roleName || "一般スタッフ"})」を登録しました`,
+      detail: `新しい従業員「${newUser.displayName} (PASS: ${newUser.pass} / 役職: ${newUser.roleName || "一般スタッフ"}${newUser.gameId ? ` / ゲーム内ID: ${newUser.gameId}` : ""})」を登録しました`,
+    });
+  };
+
+  const updateUserGameId = (userId: string, gameId: string) => {
+    const updatedUsers = users.map((u) => {
+      if (u.id === userId) {
+        return { ...u, gameId: gameId.trim() || undefined };
+      }
+      return u;
+    });
+    setUsers(updatedUsers);
+    syncStateToCloud("users", updatedUsers);
+
+    const u = users.find((item) => item.id === userId);
+    logAction({
+      category: "user",
+      title: "ゲーム内IDの変更",
+      detail: `「${u?.displayName || userId}」のゲーム内IDを「${gameId.trim() || "未設定"}」に更新しました`,
+    });
+  };
+
+  const updateUser = (userId: string, updates: Partial<StaffUser>) => {
+    const updatedUsers = users.map((u) => {
+      if (u.id === userId) {
+        return { ...u, ...updates };
+      }
+      return u;
+    });
+    setUsers(updatedUsers);
+    syncStateToCloud("users", updatedUsers);
+
+    const u = users.find((item) => item.id === userId);
+    logAction({
+      category: "user",
+      title: "従業員情報の更新",
+      detail: `「${u?.displayName || userId}」の従業員情報を更新しました`,
     });
   };
 
@@ -1472,6 +1512,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         userId: u.id,
         username: u.username,
         displayName: u.displayName,
+        gameId: u.gameId,
         role: u.role,
         roleId: u.roleId,
         roleName: u.roleName,
@@ -1662,6 +1703,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         userId: u.id,
         username: u.username,
         displayName: u.displayName,
+        gameId: u.gameId,
         role: u.role,
         roleId: u.roleId,
         roleName: u.roleName,
@@ -2651,6 +2693,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         logout,
         users,
         addUser,
+        updateUser,
+        updateUserGameId,
         updateUserPass,
         updateUserRole,
         updateUserBonus,
