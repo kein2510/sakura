@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   ShoppingBag,
   Hammer,
@@ -33,6 +33,7 @@ export default function MainPage() {
     storeSettings,
     shops,
     siteBranding,
+    categories,
   } = useApp();
 
   // 現在選択中の店舗
@@ -104,10 +105,61 @@ export default function MainPage() {
     };
   }, [refreshData]);
 
-  // 選択中店舗の料理商品のみを抽出 (未設定のものはデフォルトで sakura 扱い)
-  const currentShopProducts = products.filter(
-    (p) => (p.shopId || "sakura") === selectedShopId
-  );
+  // カテゴリーの表示順マップ
+  const categoryOrderMap = useMemo(() => {
+    const map = new Map<string, number>();
+    categories.forEach((c) => {
+      map.set(c.name, c.order);
+    });
+    return map;
+  }, [categories]);
+
+  // 選択中店舗の料理商品のみを抽出し、カテゴリーの order 順（#1, #2...）にソート
+  const currentShopProducts = useMemo(() => {
+    const shopProducts = products.filter(
+      (p) => (p.shopId || "sakura") === selectedShopId
+    );
+
+    return [...shopProducts].sort((a, b) => {
+      const orderA = categoryOrderMap.get(a.category_name || "") ?? 9999;
+      const orderB = categoryOrderMap.get(b.category_name || "") ?? 9999;
+      if (orderA !== orderB) {
+        return orderA - orderB;
+      }
+      return (a.category_name || "").localeCompare(b.category_name || "") || a.name.localeCompare(b.name);
+    });
+  }, [products, selectedShopId, categoryOrderMap]);
+
+  // カテゴリー選択（タブフィルター）
+  const [selectedCategory, setSelectedCategory] = useState<string>("all");
+
+  // 現在の店舗で実際に使われているカテゴリー一覧 (order 順)
+  const currentShopCategories = useMemo(() => {
+    const usedCatNames = new Set(
+      currentShopProducts.map((p) => p.category_name || "未分類")
+    );
+    const matched = categories.filter((c) => usedCatNames.has(c.name));
+    const extraNames = Array.from(usedCatNames).filter(
+      (name) => !categories.some((c) => c.name === name)
+    );
+    return [
+      ...matched,
+      ...extraNames.map((name, idx) => ({
+        id: `extra-cat-${idx}`,
+        name,
+        order: 9990 + idx,
+        icon: "📁",
+      })),
+    ].sort((a, b) => a.order - b.order);
+  }, [currentShopProducts, categories]);
+
+  // 画面に表示する商品（カテゴリーフィルター適用）
+  const displayedProducts = useMemo(() => {
+    if (selectedCategory === "all") return currentShopProducts;
+    return currentShopProducts.filter(
+      (p) => (p.category_name || "未分類") === selectedCategory
+    );
+  }, [currentShopProducts, selectedCategory]);
 
   const currentShopInfo = shops.find((s) => s.id === selectedShopId) || shops[0] || {
     id: "sakura",
@@ -650,18 +702,61 @@ export default function MainPage() {
       <div className="max-w-6xl mx-auto px-4 md:px-6 py-6 space-y-6 pb-16">
         {/* 商品一覧（画像1の「商品名」「個数」レイアウト ＆ 画像2の [0][1][10][100] ボタン） */}
         <div className="space-y-3">
-        <div className="flex items-center justify-between px-2">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between px-2 gap-1.5">
           <h2 className="text-sm font-bold text-stone-300 uppercase tracking-wider flex items-center gap-2">
             <Boxes className="w-4 h-4 text-rose-500" />
-            【{currentShopInfo.name}】商品一覧 ({currentShopProducts.length}点)
+            【{currentShopInfo.name}】商品一覧 ({displayedProducts.length}点
+            {selectedCategory !== "all" && ` / 全${currentShopProducts.length}点`})
           </h2>
           <span className="text-[11px] text-stone-400">
-            ※「作成」を押すと必要な素材が自動で消費されます
+            ※カテゴリー順（#1, #2...）に並んでいます。「作成」を押すと必要な素材が自動消費されます
           </span>
         </div>
 
+        {/* カテゴリー順切り替えタブ */}
+        {currentShopCategories.length > 0 && (
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-thin px-1">
+            <button
+              type="button"
+              onClick={() => setSelectedCategory("all")}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer border ${
+                selectedCategory === "all"
+                  ? "bg-rose-500 text-white border-rose-400 shadow-md shadow-rose-950/40"
+                  : "bg-stone-900 text-stone-400 border-stone-800 hover:text-white hover:border-stone-700"
+              }`}
+            >
+              すべて ({currentShopProducts.length})
+            </button>
+            {currentShopCategories.map((cat) => {
+              const count = currentShopProducts.filter(
+                (p) => (p.category_name || "未分類") === cat.name
+              ).length;
+              const isSelected = selectedCategory === cat.name;
+
+              return (
+                <button
+                  key={cat.id}
+                  type="button"
+                  onClick={() => setSelectedCategory(cat.name)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer flex items-center gap-1.5 border ${
+                    isSelected
+                      ? "bg-rose-500 text-white border-rose-400 shadow-md shadow-rose-950/40"
+                      : "bg-stone-900 text-stone-400 border-stone-800 hover:text-white hover:border-stone-700"
+                  }`}
+                >
+                  <span>{cat.icon || "📁"}</span>
+                  <span>{cat.name}</span>
+                  <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${isSelected ? "bg-rose-600 text-white" : "bg-stone-800 text-stone-400"}`}>
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
         <div className="grid grid-cols-1 gap-3">
-          {currentShopProducts.map((item) => {
+          {displayedProducts.map((item) => {
             const currentQty = quantities[item.id] || 0;
             const itemSubtotal = item.selling_price * currentQty;
 
@@ -695,6 +790,11 @@ export default function MainPage() {
                       <h3 className="font-extrabold text-sm sm:text-base text-white truncate">
                         {item.name}
                       </h3>
+                      {item.category_name && (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-stone-800 text-stone-300 border border-stone-700">
+                          {categories.find((c) => c.name === item.category_name)?.icon || "📁"} {item.category_name}
+                        </span>
+                      )}
                       <span className="text-xs font-black text-rose-400">
                         {formatCurrency(item.selling_price)}
                       </span>

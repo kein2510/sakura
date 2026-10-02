@@ -43,6 +43,8 @@ import {
   RotateCcw,
   BarChart3,
   Package,
+  Folder,
+  FolderPlus,
 } from "lucide-react";
 import Link from "next/link";
 import { useApp } from "@/context/AppContext";
@@ -58,6 +60,7 @@ import {
   ShopId,
   ShopDefinition,
   StaffUser,
+  ItemCategory,
 } from "@/types";
 import { getRecentWeeks, isDateInWeek } from "@/lib/dateUtils";
 
@@ -102,6 +105,10 @@ export default function ExecutivePage() {
     vaultBalance,
     updateVaultBalance,
     refreshData,
+    categories,
+    addCategory,
+    updateCategory,
+    deleteCategory,
   } = useApp();
 
   const theme = getThemeStyles(siteBranding.themeColor);
@@ -119,6 +126,18 @@ export default function ExecutivePage() {
 
   const [activeTab, setActiveTab] = useState<ExecutiveTab>("summary");
   const [realtimeNotice, setRealtimeNotice] = useState<string | null>(null);
+
+  // カテゴリー管理ステート
+  const [isAddCatModalOpen, setIsAddCatModalOpen] = useState(false);
+  const [newCatName, setNewCatName] = useState("");
+  const [newCatOrder, setNewCatOrder] = useState<number>(5);
+  const [newCatColor, setNewCatColor] = useState<string>("amber");
+  const [newCatIcon, setNewCatIcon] = useState<string>("🍱");
+  const [editingCatId, setEditingCatId] = useState<string | null>(null);
+  const [editCatName, setEditCatName] = useState("");
+  const [editCatOrder, setEditCatOrder] = useState<number>(1);
+  const [editCatColor, setEditCatColor] = useState<string>("amber");
+  const [editCatIcon, setEditCatIcon] = useState<string>("🍱");
 
   // 幹部ページの Supabase Realtime サブスクリプション
   useEffect(() => {
@@ -423,6 +442,55 @@ export default function ExecutivePage() {
   const handleDeleteRole = (role: CustomRole) => {
     if (!confirm(`本当に役職「${role.name}」を削除しますか？`)) return;
     const res = deleteRole(role.id);
+    alert(res.message);
+  };
+
+  // カテゴリー追加ハンドラ
+  const handleAddCategorySubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newCatName.trim()) {
+      alert("カテゴリー名を入力してください。");
+      return;
+    }
+    addCategory({
+      name: newCatName.trim(),
+      order: Number(newCatOrder) || 1,
+      color: newCatColor,
+      icon: newCatIcon || "📁",
+      targetType: "all",
+    });
+    setNewCatName("");
+    setNewCatOrder(categories.length + 2);
+    setIsAddCatModalOpen(false);
+    alert(`カテゴリー「${newCatName}」を追加しました！`);
+  };
+
+  const handleStartEditCategory = (cat: ItemCategory) => {
+    setEditingCatId(cat.id);
+    setEditCatName(cat.name);
+    setEditCatOrder(cat.order);
+    setEditCatColor(cat.color || "amber");
+    setEditCatIcon(cat.icon || "📁");
+  };
+
+  const handleSaveCategoryEdit = (id: string) => {
+    if (!editCatName.trim()) {
+      alert("カテゴリー名を入力してください。");
+      return;
+    }
+    updateCategory(id, {
+      name: editCatName.trim(),
+      order: Number(editCatOrder) || 1,
+      color: editCatColor,
+      icon: editCatIcon || "📁",
+    });
+    setEditingCatId(null);
+    alert("カテゴリー情報を更新しました！");
+  };
+
+  const handleDeleteCategoryClick = (cat: ItemCategory) => {
+    if (!confirm(`本当にカテゴリー「${cat.name}」を削除しますか？`)) return;
+    const res = deleteCategory(cat.id);
     alert(res.message);
   };
 
@@ -4873,6 +4941,14 @@ export default function ExecutivePage() {
                 if (recipeShopFilter === "all") return true;
                 return (product.shopId || "sakura") === recipeShopFilter;
               })
+              .sort((a, b) => {
+                const catA = categories.find((c) => c.name === a.category_name);
+                const catB = categories.find((c) => c.name === b.category_name);
+                const orderA = catA ? catA.order : 9999;
+                const orderB = catB ? catB.order : 9999;
+                if (orderA !== orderB) return orderA - orderB;
+                return (a.category_name || "").localeCompare(b.category_name || "") || a.name.localeCompare(b.name);
+              })
               .map((product) => {
               const isEditingRecipe = editingRecipeProductId === product.id;
               const currentPriceVal =
@@ -5186,14 +5262,39 @@ export default function ExecutivePage() {
 
               {/* カテゴリ */}
               <div>
-                <label className="block text-xs font-bold text-stone-300 mb-1">カテゴリ:</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-bold text-stone-300">カテゴリ:</label>
+                  <span className="text-[10px] text-stone-400">登録済みカテゴリーから選択または自由入力</span>
+                </div>
+                <div className="flex gap-1.5 flex-wrap mb-1.5">
+                  {categories.map((cat) => (
+                    <button
+                      key={cat.id}
+                      type="button"
+                      onClick={() => setItemCategory(cat.name)}
+                      className={`px-2 py-0.5 rounded-lg text-xs font-bold transition-colors cursor-pointer border ${
+                        itemCategory === cat.name
+                          ? "bg-amber-500/20 text-amber-300 border-amber-500/50"
+                          : "bg-stone-800 text-stone-400 border-stone-700 hover:text-white"
+                      }`}
+                    >
+                      {cat.icon} {cat.name}
+                    </button>
+                  ))}
+                </div>
                 <input
                   type="text"
-                  placeholder="例: 寿司、刺身、肉料理、仕入素材"
+                  list="item-categories-list"
+                  placeholder="例: 料理、飲み物、甘味、素材..."
                   value={itemCategory}
                   onChange={(e) => setItemCategory(e.target.value)}
                   className="w-full px-3 py-2 bg-stone-950 rounded-xl border border-stone-700 text-xs text-white placeholder:text-stone-600 focus:border-amber-500"
                 />
+                <datalist id="item-categories-list">
+                  {categories.map((cat) => (
+                    <option key={cat.id} value={cat.name} />
+                  ))}
+                </datalist>
               </div>
 
               {/* 料理の場合: 販売価格 */}
@@ -5323,6 +5424,14 @@ export default function ExecutivePage() {
                   if (itemShopFilter === "all") return true;
                   if (itemShopFilter === "ingredient") return item.type === "ingredient";
                   return item.type === "product" && (item.shopId || shops[0]?.id) === itemShopFilter;
+                })
+                .sort((a, b) => {
+                  const catA = categories.find((c) => c.name === a.category_name);
+                  const catB = categories.find((c) => c.name === b.category_name);
+                  const orderA = catA ? catA.order : 9999;
+                  const orderB = catB ? catB.order : 9999;
+                  if (orderA !== orderB) return orderA - orderB;
+                  return (a.category_name || "").localeCompare(b.category_name || "") || a.name.localeCompare(b.name);
                 })
                 .map((item) => {
                 const isProduct = item.type === "product";
@@ -5474,13 +5583,37 @@ export default function ExecutivePage() {
                               </select>
                             </div>
                             <div>
-                              <label className="block text-[11px] font-bold text-stone-300 mb-0.5">カテゴリ:</label>
+                              <div className="flex items-center justify-between mb-0.5">
+                                <label className="text-[11px] font-bold text-stone-300">カテゴリ:</label>
+                              </div>
+                              <div className="flex gap-1 flex-wrap mb-1">
+                                {categories.map((cat) => (
+                                  <button
+                                    key={cat.id}
+                                    type="button"
+                                    onClick={() => setEditItemCategory(cat.name)}
+                                    className={`px-1.5 py-0.5 rounded text-[10px] font-bold transition-colors cursor-pointer border ${
+                                      editItemCategory === cat.name
+                                        ? "bg-amber-500/20 text-amber-300 border-amber-500/50"
+                                        : "bg-stone-850 text-stone-400 border-stone-800 hover:text-white"
+                                    }`}
+                                  >
+                                    {cat.icon} {cat.name}
+                                  </button>
+                                ))}
+                              </div>
                               <input
                                 type="text"
+                                list="edit-item-categories-list"
                                 value={editItemCategory}
                                 onChange={(e) => setEditItemCategory(e.target.value)}
                                 className="w-full px-2.5 py-1 bg-stone-950 rounded-lg border border-stone-700 text-xs text-white focus:border-amber-500"
                               />
+                              <datalist id="edit-item-categories-list">
+                                {categories.map((cat) => (
+                                  <option key={cat.id} value={cat.name} />
+                                ))}
+                              </datalist>
                             </div>
                           </div>
 
@@ -5599,12 +5732,12 @@ export default function ExecutivePage() {
             <div className="flex items-center gap-1.5 bg-stone-950 border border-stone-800 p-1 rounded-xl flex-wrap">
               {[
                 { id: "all", label: "すべて" },
+                { id: "product", label: "商品・素材" },
+                { id: "inventory", label: "在庫調整" },
                 { id: "sale", label: "販売" },
                 { id: "craft", label: "作成" },
                 { id: "vault", label: "金庫" },
                 { id: "bonus", label: "ボーナス" },
-                { id: "inventory", label: "在庫調整" },
-                { id: "item", label: "商品・素材" },
                 { id: "role", label: "役職" },
                 { id: "user", label: "従業員・PASS" },
                 { id: "recipe", label: "レシピ・価格" },
@@ -5633,16 +5766,22 @@ export default function ExecutivePage() {
             ) : (
               filteredLogs.map((log) => {
                 const badgeColor =
-                  log.category === "sale"
+                  log.category === "product"
+                    ? "bg-amber-950/80 text-amber-300 border-amber-700/60"
+                    : log.category === "inventory"
+                    ? "bg-teal-950/70 text-teal-300 border-teal-800/50"
+                    : log.category === "sale"
                     ? "bg-rose-950/70 text-rose-300 border-rose-800/50"
                     : log.category === "craft"
-                    ? "bg-amber-950/70 text-amber-300 border-amber-800/50"
+                    ? "bg-orange-950/70 text-orange-300 border-orange-800/50"
                     : log.category === "vault"
-                    ? "bg-amber-500/20 text-amber-300 border-amber-500/40"
+                    ? "bg-yellow-500/20 text-yellow-300 border-yellow-500/40"
                     : log.category === "bonus"
                     ? "bg-pink-950/70 text-pink-300 border-pink-800/50"
                     : log.category === "user"
                     ? "bg-purple-950/70 text-purple-300 border-purple-800/50"
+                    : log.category === "role"
+                    ? "bg-indigo-950/70 text-indigo-300 border-indigo-800/50"
                     : log.category === "recipe"
                     ? "bg-blue-950/70 text-blue-300 border-blue-800/50"
                     : log.category === "auth"
@@ -5650,7 +5789,11 @@ export default function ExecutivePage() {
                     : "bg-stone-800 text-stone-300 border-stone-700";
 
                 const categoryLabel =
-                  log.category === "sale"
+                  log.category === "product"
+                    ? "商品・素材管理"
+                    : log.category === "inventory"
+                    ? "在庫調整"
+                    : log.category === "sale"
                     ? "販売"
                     : log.category === "craft"
                     ? "クラフト作成"
@@ -5660,11 +5803,13 @@ export default function ExecutivePage() {
                     ? "ボーナス査定"
                     : log.category === "user"
                     ? "従業員管理"
+                    : log.category === "role"
+                    ? "役職設定"
                     : log.category === "recipe"
                     ? "レシピ・価格"
                     : log.category === "auth"
                     ? "認証"
-                    : "在庫調整";
+                    : "店舗操作";
 
                 return (
                   <div key={log.id} className="py-3.5 flex items-start justify-between gap-4">
@@ -6261,7 +6406,293 @@ export default function ExecutivePage() {
           </div>
 
           {/* ====================================================
-              4. 🏪 新規店舗追加モーダル
+              3.5 📁 商品カテゴリー管理（表示順・並び替え）
+          ==================================================== */}
+          <div className="bg-stone-900 border border-stone-800 rounded-2xl p-6 shadow-xl space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-3 border-b border-stone-800">
+              <div>
+                <h3 className="text-sm font-black text-white flex items-center gap-2">
+                  <Folder className="w-4 h-4 text-amber-400" />
+                  商品カテゴリー管理（表示順・並び替え）
+                </h3>
+                <p className="text-xs text-stone-400 mt-0.5">
+                  売上画面やクラフト画面での商品・素材の表示順序をカテゴリーの順番番号（#1, #2...）順に並べ替えます。
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setNewCatOrder(categories.length + 1);
+                  setIsAddCatModalOpen(true);
+                }}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-stone-950 font-black text-xs rounded-xl shadow-xs transition-colors shrink-0 cursor-pointer"
+              >
+                <FolderPlus className="w-3.5 h-3.5" />
+                新規カテゴリー追加
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {categories.map((cat, index) => {
+                const isEditing = editingCatId === cat.id;
+
+                return (
+                  <div
+                    key={cat.id}
+                    className="p-3.5 rounded-xl border border-stone-800 bg-stone-950/60 flex flex-col justify-between gap-2.5 transition-colors hover:border-stone-700"
+                  >
+                    {!isEditing ? (
+                      <>
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <span className="inline-flex items-center justify-center w-6 h-6 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs font-black">
+                              #{cat.order}
+                            </span>
+                            <span className="text-base">{cat.icon || "📁"}</span>
+                            <span className="text-sm font-bold text-white">{cat.name}</span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            {/* 順序入れ替えボタン ▲ ▼ */}
+                            <button
+                              type="button"
+                              disabled={index === 0}
+                              onClick={() => {
+                                if (index > 0) {
+                                  const prevCat = categories[index - 1];
+                                  const currentOrder = cat.order;
+                                  const prevOrder = prevCat.order;
+                                  updateCategory(cat.id, { order: prevOrder === currentOrder ? currentOrder - 1 : prevOrder });
+                                  updateCategory(prevCat.id, { order: currentOrder });
+                                }
+                              }}
+                              className="px-1.5 py-0.5 text-[10px] bg-stone-800 hover:bg-stone-700 disabled:opacity-30 disabled:pointer-events-none text-stone-300 rounded cursor-pointer"
+                              title="上へ"
+                            >
+                              ▲
+                            </button>
+                            <button
+                              type="button"
+                              disabled={index === categories.length - 1}
+                              onClick={() => {
+                                if (index < categories.length - 1) {
+                                  const nextCat = categories[index + 1];
+                                  const currentOrder = cat.order;
+                                  const nextOrder = nextCat.order;
+                                  updateCategory(cat.id, { order: nextOrder === currentOrder ? currentOrder + 1 : nextOrder });
+                                  updateCategory(nextCat.id, { order: currentOrder });
+                                }
+                              }}
+                              className="px-1.5 py-0.5 text-[10px] bg-stone-800 hover:bg-stone-700 disabled:opacity-30 disabled:pointer-events-none text-stone-300 rounded cursor-pointer"
+                              title="下へ"
+                            >
+                              ▼
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between pt-2 border-t border-stone-800/80 text-xs">
+                          <span className="text-[11px] text-stone-400">
+                            表示順番号: <strong className="text-amber-300">{cat.order}</strong>
+                          </span>
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => handleStartEditCategory(cat)}
+                              className="px-2 py-0.5 rounded bg-stone-800 hover:bg-stone-700 text-stone-300 text-[11px] font-bold cursor-pointer"
+                            >
+                              編集
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteCategoryClick(cat)}
+                              className="px-2 py-0.5 rounded bg-rose-950/60 hover:bg-rose-900/80 text-rose-300 text-[11px] font-bold cursor-pointer"
+                            >
+                              削除
+                            </button>
+                          </div>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="space-y-2">
+                        <div className="grid grid-cols-3 gap-2">
+                          <div className="col-span-2">
+                            <label className="block text-[10px] font-bold text-stone-400 mb-0.5">カテゴリ名:</label>
+                            <input
+                              type="text"
+                              value={editCatName}
+                              onChange={(e) => setEditCatName(e.target.value)}
+                              className="w-full px-2 py-1 bg-stone-900 rounded-lg border border-stone-700 text-xs text-white focus:border-amber-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] font-bold text-stone-400 mb-0.5">アイコン:</label>
+                            <input
+                              type="text"
+                              value={editCatIcon}
+                              onChange={(e) => setEditCatIcon(e.target.value)}
+                              className="w-full px-2 py-1 bg-stone-900 rounded-lg border border-stone-700 text-xs text-white text-center focus:border-amber-500"
+                            />
+                          </div>
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-stone-400 mb-0.5">表示順番号 (小さいほど上):</label>
+                          <input
+                            type="number"
+                            min="1"
+                            value={editCatOrder}
+                            onChange={(e) => setEditCatOrder(parseInt(e.target.value) || 1)}
+                            className="w-full px-2 py-1 bg-stone-900 rounded-lg border border-stone-700 text-xs text-white focus:border-amber-500"
+                          />
+                        </div>
+                        <div className="flex items-center justify-end gap-1.5 pt-1">
+                          <button
+                            type="button"
+                            onClick={() => setEditingCatId(null)}
+                            className="px-2.5 py-1 rounded-lg bg-stone-800 text-stone-400 text-xs font-bold hover:text-white cursor-pointer"
+                          >
+                            キャンセル
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleSaveCategoryEdit(cat.id)}
+                            className="px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-500 text-stone-950 text-xs font-black shadow-xs cursor-pointer"
+                          >
+                            保存
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* ====================================================
+              4. 📁 新規カテゴリー追加モーダル
+          ==================================================== */}
+          {isAddCatModalOpen && (
+            <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
+              <div className="bg-stone-900 rounded-3xl p-6 max-w-md w-full shadow-2xl border border-stone-800 text-white space-y-4">
+                <div className="flex items-center justify-between border-b border-stone-800 pb-3">
+                  <h2 className="text-base font-black text-white flex items-center gap-2">
+                    <FolderPlus className="w-5 h-5 text-amber-400" />
+                    新しい商品カテゴリーを追加
+                  </h2>
+                  <button
+                    type="button"
+                    onClick={() => setIsAddCatModalOpen(false)}
+                    className="text-stone-400 hover:text-white p-1 rounded-lg hover:bg-stone-800 transition-colors cursor-pointer"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <form onSubmit={handleAddCategorySubmit} className="space-y-3.5">
+                  <div>
+                    <label className="block text-xs font-bold text-stone-300 mb-1">
+                      カテゴリー名:
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="例: 肉料理、刺身、特製甘味"
+                      value={newCatName}
+                      onChange={(e) => setNewCatName(e.target.value)}
+                      className="w-full px-3 py-2 bg-stone-950 rounded-xl border border-stone-700 text-sm text-white placeholder:text-stone-600 focus:border-amber-500"
+                      required
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-bold text-stone-300 mb-1">
+                        表示順番号 (小さいほど上):
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={newCatOrder}
+                        onChange={(e) => setNewCatOrder(parseInt(e.target.value) || 1)}
+                        className="w-full px-3 py-2 bg-stone-950 rounded-xl border border-stone-700 text-sm font-black text-amber-400 focus:border-amber-500"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-stone-300 mb-1">
+                        絵文字アイコン:
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="例: 🍱, 🍵, 🍡, 🥩"
+                        value={newCatIcon}
+                        onChange={(e) => setNewCatIcon(e.target.value)}
+                        className="w-full px-3 py-2 bg-stone-950 rounded-xl border border-stone-700 text-sm text-center text-white focus:border-amber-500"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 pt-1 flex-wrap">
+                    <span className="text-[11px] text-stone-400">クイックアイコン候補:</span>
+                    {["🍱", "🍵", "🍡", "🍣", "🥩", "🍶", "🍺", "🍧", "📦", "✨"].map((icon) => (
+                      <button
+                        key={icon}
+                        type="button"
+                        onClick={() => setNewCatIcon(icon)}
+                        className="px-2 py-1 text-sm bg-stone-800 hover:bg-stone-700 rounded-lg transition-colors cursor-pointer"
+                      >
+                        {icon}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-stone-300 mb-1">
+                      カテゴリーカラー:
+                    </label>
+                    <div className="flex items-center gap-2">
+                      {[
+                        { id: "amber", label: "山吹 (amber)", bg: "bg-amber-500" },
+                        { id: "rose", label: "桜 (rose)", bg: "bg-rose-500" },
+                        { id: "emerald", label: "抹茶 (emerald)", bg: "bg-emerald-500" },
+                        { id: "blue", label: "藍 (blue)", bg: "bg-blue-500" },
+                        { id: "purple", label: "藤 (purple)", bg: "bg-purple-500" },
+                        { id: "stone", label: "墨 (stone)", bg: "bg-stone-500" },
+                      ].map((col) => (
+                        <button
+                          key={col.id}
+                          type="button"
+                          onClick={() => setNewCatColor(col.id)}
+                          className={`w-7 h-7 rounded-full ${col.bg} transition-all cursor-pointer ${
+                            newCatColor === col.id ? "ring-2 ring-white ring-offset-2 ring-offset-stone-900 scale-110" : "opacity-70 hover:opacity-100"
+                          }`}
+                          title={col.label}
+                        />
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end gap-2 pt-3 border-t border-stone-800">
+                    <button
+                      type="button"
+                      onClick={() => setIsAddCatModalOpen(false)}
+                      className="px-4 py-2 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-300 font-bold text-xs cursor-pointer"
+                    >
+                      キャンセル
+                    </button>
+                    <button
+                      type="submit"
+                      className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-stone-950 font-black text-xs shadow-md cursor-pointer"
+                    >
+                      カテゴリーを追加
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {/* ====================================================
+              5. 🏪 新規店舗追加モーダル
           ==================================================== */}
           {isAddShopModalOpen && (
             <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">

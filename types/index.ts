@@ -42,6 +42,22 @@ export interface RecipeRequirement {
   unit?: string;           // 単位 (個, 本など)
 }
 
+export interface ItemCategory {
+  id: string;        // 一意なID (例: "cat-dish", "cat-drink", "cat-sweets", "cat-ingredient")
+  name: string;      // カテゴリー名 (例: "料理", "飲み物", "甘味", "素材")
+  order: number;     // 表示順序番号 (1, 2, 3...)
+  color?: string;    // バッジカラー ("amber" | "rose" | "emerald" | "blue" | "purple" | "stone")
+  icon?: string;     // 絵文字アイコン (例: "🍱", "🍵", "🍡", "📦")
+  targetType?: ItemType | "all"; // "product" | "ingredient" | "all"
+}
+
+export const DEFAULT_CATEGORIES: ItemCategory[] = [
+  { id: "cat-dish", name: "料理", order: 1, color: "amber", icon: "🍱", targetType: "product" },
+  { id: "cat-drink", name: "飲み物", order: 2, color: "blue", icon: "🍵", targetType: "product" },
+  { id: "cat-sweets", name: "甘味", order: 3, color: "rose", icon: "🍡", targetType: "product" },
+  { id: "cat-ingredient", name: "素材", order: 4, color: "stone", icon: "📦", targetType: "ingredient" },
+];
+
 export type ShopId = string;
 
 export interface ShopDefinition {

@@ -21,6 +21,8 @@ import {
   StoreSettings,
   ItemType,
   PaymentMethod,
+  ItemCategory,
+  DEFAULT_CATEGORIES,
 } from "@/types";
 import {
   mockStaffUsers,
@@ -155,6 +157,12 @@ interface AppContextType {
     success: boolean;
     message: string;
   };
+
+  // カテゴリー管理 (並び順order対応)
+  categories: ItemCategory[];
+  addCategory: (cat: Omit<ItemCategory, "id">) => void;
+  updateCategory: (id: string, updates: Partial<ItemCategory>) => void;
+  deleteCategory: (id: string) => { success: boolean; message: string };
 
   // 幹部用 設定機能
   addItem: (item: Omit<Item, "id" | "created_at" | "updated_at">) => void;
@@ -437,6 +445,24 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return DEFAULT_BRANDING;
   });
 
+  // 商品カテゴリー一覧（並び順 order 順）
+  const [categories, setCategories] = useState<ItemCategory[]>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const saved = localStorage.getItem("fivem_sakura_categories");
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            return parsed.sort((a: ItemCategory, b: ItemCategory) => a.order - b.order);
+          }
+        }
+      } catch {
+        // ignore
+      }
+    }
+    return DEFAULT_CATEGORIES;
+  });
+
   // LocalStorage 安全書き込みヘルパー（容量超過 QuotaExceededError によるクラッシュを完全に防ぐ）
   const safeSetLocalStorage = (key: string, value: string) => {
     if (typeof window === "undefined") return;
@@ -465,6 +491,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     safeSetLocalStorage("fivem_sakura_site_branding", JSON.stringify(siteBranding));
   }, [siteBranding]);
+
+  useEffect(() => {
+    safeSetLocalStorage("fivem_sakura_categories", JSON.stringify(categories));
+  }, [categories]);
 
   useEffect(() => {
     safeSetLocalStorage("fivem_sakura_vault_balance", vaultBalance.toString());
@@ -695,7 +725,33 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             created_at: String(c.created_at),
             updated_at: String(c.updated_at),
           }));
-          setItems(mapped);
+          setItems((prevItems) => {
+            // ローカルで直近に更新されたアイテム（ローカルの updated_at がサーバーより新しい）を保護
+            const prevMap = new Map(prevItems.map((item) => [item.id, item]));
+            const merged = mapped.map((cloudItem) => {
+              const localItem = prevMap.get(cloudItem.id);
+              if (!localItem) return cloudItem;
+
+              const localTime = new Date(localItem.updated_at || localItem.created_at || 0).getTime();
+              const cloudTime = new Date(cloudItem.updated_at || cloudItem.created_at || 0).getTime();
+
+              // ローカルの方が新しければ、編集直後または保存伝播中のためローカルの値を優先して巻き戻りを防止
+              if (localTime > cloudTime) {
+                return localItem;
+              }
+              return cloudItem;
+            });
+
+            // サーバーにまだ届いていないローカル新規作成アイテム（直近30秒以内）も保護
+            const cloudIds = new Set(mapped.map((c) => c.id));
+            const pendingNewItems = prevItems.filter((item) => {
+              if (cloudIds.has(item.id)) return false;
+              const createTime = new Date(item.created_at || 0).getTime();
+              return Date.now() - createTime < 30000;
+            });
+
+            return [...merged, ...pendingNewItems];
+          });
         } else {
           await syncItemsBatchToCloud(initialItems);
         }
@@ -809,6 +865,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             setShops(row.value as ShopDefinition[]);
           } else if (row.key === "site_branding" && row.value) {
             setSiteBranding((prev) => ({ ...prev, ...(row.value as Partial<SiteBranding>) }));
+          } else if (row.key === "categories" && Array.isArray(row.value) && row.value.length > 0) {
+            setCategories((row.value as ItemCategory[]).sort((a, b) => a.order - b.order));
           }
         });
       }
@@ -871,6 +929,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             setItems((prev) => {
               const idx = prev.findIndex((i) => i.id === updatedItem.id);
               if (idx >= 0) {
+                const currentLocal = prev[idx];
+                const localTime = new Date(currentLocal.updated_at || currentLocal.created_at || 0).getTime();
+                const remoteTime = new Date(updatedItem.updated_at || updatedItem.created_at || 0).getTime();
+                // ローカルの方が新しければ、編集直後または保存伝播中のため上書きを防止
+                if (localTime > remoteTime) {
+                  return prev;
+                }
                 const next = [...prev];
                 next[idx] = updatedItem;
                 return next;
@@ -989,6 +1054,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             setShops(row.value as ShopDefinition[]);
           } else if (row.key === "site_branding" && row.value) {
             setSiteBranding((prev) => ({ ...prev, ...(row.value as Partial<SiteBranding>) }));
+          } else if (row.key === "categories" && Array.isArray(row.value) && row.value.length > 0) {
+            setCategories((row.value as ItemCategory[]).sort((a, b) => a.order - b.order));
           }
         }
       )
@@ -2528,6 +2595,52 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (updatedItem) syncItemToCloud(updatedItem);
   };
 
+  // カテゴリー管理 (並び順order対応)
+  const addCategory = (catData: Omit<ItemCategory, "id">) => {
+    const newCat: ItemCategory = {
+      ...catData,
+      id: `cat-${Date.now().toString().slice(-6)}`,
+    };
+    const next = [...categories, newCat].sort((a, b) => a.order - b.order);
+    setCategories(next);
+    syncStateToCloud("categories", next);
+    logAction({
+      category: "product",
+      title: `カテゴリー「${newCat.name}」の追加`,
+      detail: `表示順: ${newCat.order} 番で新規カテゴリーを登録しました`,
+    });
+  };
+
+  const updateCategory = (id: string, updates: Partial<ItemCategory>) => {
+    const next = categories
+      .map((c) => (c.id === id ? { ...c, ...updates } : c))
+      .sort((a, b) => a.order - b.order);
+    setCategories(next);
+    syncStateToCloud("categories", next);
+    logAction({
+      category: "product",
+      title: "カテゴリー情報の更新",
+      detail: `カテゴリー ID: ${id} の設定を変更しました`,
+    });
+  };
+
+  const deleteCategory = (id: string): { success: boolean; message: string } => {
+    const target = categories.find((c) => c.id === id);
+    if (!target) return { success: false, message: "対象カテゴリーが見つかりません。" };
+    if (categories.length <= 1) {
+      return { success: false, message: "カテゴリーは最低1つ必要です。" };
+    }
+    const next = categories.filter((c) => c.id !== id);
+    setCategories(next);
+    syncStateToCloud("categories", next);
+    logAction({
+      category: "product",
+      title: `カテゴリー「${target.name}」の削除`,
+      detail: `カテゴリー「${target.name}」を削除しました`,
+    });
+    return { success: true, message: `カテゴリー「${target.name}」を削除しました。` };
+  };
+
   return (
     <AppContext.Provider
       value={{
@@ -2552,6 +2665,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         deleteShop,
         siteBranding,
         updateSiteBranding,
+        categories,
+        addCategory,
+        updateCategory,
+        deleteCategory,
         roles,
         addRole,
         updateRole,

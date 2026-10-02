@@ -41,12 +41,21 @@ export async function compressImageFile(
         return;
       }
 
-      // 白背景を描画（PNG透過画像などで背景が黒くなるのを防ぐ）
-      ctx.fillStyle = "#ffffff";
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      // 透過を維持して描画（白背景で塗りつぶさない）
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
-      const dataUrl = canvas.toDataURL("image/jpeg", quality);
+      // WebP はアルファ透過チャンネルを完全保持したままJPEG同等の高圧縮が可能
+      let mimeType = "image/webp";
+      let dataUrl = canvas.toDataURL("image/webp", quality);
+
+      // 万一ブラウザがWebP未対応でPNGフォールバックした場合の検証
+      if (!dataUrl.startsWith("data:image/webp")) {
+        // PNGとして出力（透過保持）
+        mimeType = "image/png";
+        dataUrl = canvas.toDataURL("image/png");
+      }
+
       canvas.toBlob(
         (blob) => {
           if (blob) {
@@ -55,7 +64,7 @@ export async function compressImageFile(
             resolve({ blob: file, dataUrl });
           }
         },
-        "image/jpeg",
+        mimeType,
         quality
       );
     };
@@ -89,14 +98,16 @@ export async function uploadImage(file: File): Promise<string> {
   // 2. Supabase Storage が利用可能であればアップロードを試みる
   if (supabase) {
     try {
-      const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}.jpg`;
+      const isWebp = uploadBlob.type === "image/webp";
+      const ext = isWebp ? "webp" : "png";
+      const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}.${ext}`;
       const filePath = `items/${fileName}`;
 
       const { data, error } = await supabase.storage
         .from("item-images")
         .upload(filePath, uploadBlob, {
           cacheControl: "3600",
-          contentType: "image/jpeg",
+          contentType: uploadBlob.type || "image/webp",
           upsert: true,
         });
 
