@@ -694,18 +694,29 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   // ============================================================================
   // Supabase 初期データ取得 & Realtime 購読
   // ============================================================================
-  const fetchCloudData = useCallback(async () => {
+  const fetchCloudData = useCallback(async (isSilent = false) => {
     const client = supabase;
     if (!isSupabaseConfigured || !client) return;
 
     try {
-      setSyncStatus("syncing");
+      if (!isSilent) {
+        setSyncStatus("syncing");
+      }
+
+      // (A)〜(D) 4つのテーブルを Promise.all で同時に並行フェッチして待機時間を大幅短縮
+      const [
+        { data: cloudItems, error: itemsErr },
+        { data: cloudSales, error: salesErr },
+        { data: cloudLogs, error: logsErr },
+        { data: stateData, error: stateErr },
+      ] = await Promise.all([
+        client.from("sakura_items").select("*"),
+        client.from("sakura_sales").select("*").order("created_at", { ascending: false }),
+        client.from("sakura_action_logs").select("*").order("created_at", { ascending: false }).limit(500),
+        client.from("sakura_system_state").select("*"),
+      ]);
 
       // (A) アイテム取得
-      const { data: cloudItems, error: itemsErr } = await client
-        .from("sakura_items")
-        .select("*");
-
       if (!itemsErr && cloudItems) {
         if (cloudItems.length > 0) {
           const mapped: Item[] = (cloudItems as Record<string, unknown>[]).map((c) => ({
@@ -760,11 +771,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }
 
       // (B) 売上伝票取得
-      const { data: cloudSales, error: salesErr } = await client
-        .from("sakura_sales")
-        .select("*")
-        .order("created_at", { ascending: false });
-
       if (!salesErr && cloudSales) {
         if (cloudSales.length > 0) {
           const mappedSales: Sale[] = (cloudSales as Record<string, unknown>[]).map((s) => {
@@ -812,12 +818,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }
 
       // (C) 操作ログ取得 (最新500件)
-      const { data: cloudLogs, error: logsErr } = await client
-        .from("sakura_action_logs")
-        .select("*")
-        .order("created_at", { ascending: false })
-        .limit(500);
-
       if (!logsErr && cloudLogs) {
         if (cloudLogs.length > 0) {
           const mappedLogs: ActionLog[] = (cloudLogs as Record<string, unknown>[]).map((l) => ({
@@ -838,10 +838,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }
 
       // (D) 共通システム状態 (金庫残高, ボーナス, 役職, 従業員)
-      const { data: stateData, error: stateErr } = await client
-        .from("sakura_system_state")
-        .select("*");
-
       if (!stateErr && stateData) {
         (stateData as { key: string; value: unknown }[]).forEach((row) => {
           const val = row.value as Record<string, unknown> | null;
@@ -881,7 +877,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const refreshData = async () => {
-    await fetchCloudData();
+    await fetchCloudData(false);
   };
 
   useEffect(() => {
@@ -1070,17 +1066,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         }
       });
 
-    // 画面フォーカス時またはタブ復帰時の自動再同期
+    // 画面フォーカス時またはタブ復帰時の自動再同期（サイレント同期：ステータス表示をチラつかせない）
     const handleFocus = () => {
       if (document.visibilityState === "visible") {
-        fetchCloudData();
+        fetchCloudData(true);
       }
     };
     window.addEventListener("focus", handleFocus);
     window.addEventListener("visibilitychange", handleFocus);
 
-    // 15秒ごとの定期バックアップ同期
-    const intervalTimer = setInterval(fetchCloudData, 15000);
+    // 15秒ごとの定期バックアップ同期（サイレント同期：ステータス表示をチラつかせない）
+    const intervalTimer = setInterval(() => {
+      fetchCloudData(true);
+    }, 15000);
 
     return () => {
       isMounted = false;
