@@ -295,6 +295,8 @@ export default function ExecutivePage() {
   const [editShopIcon, setEditShopIcon] = useState("🏪");
   const [editShopThemeColor, setEditShopThemeColor] = useState("amber");
   const [editShopDesc, setEditShopDesc] = useState("");
+  const [editShopEnableMultiStaffWork, setEditShopEnableMultiStaffWork] = useState(false);
+  const [editShopWorkTypeLabel, setEditShopWorkTypeLabel] = useState("修理箇所");
 
   // --- ゲーム内金庫調整 state ---
   const [isVaultModalOpen, setIsVaultModalOpen] = useState(false);
@@ -947,6 +949,8 @@ export default function ExecutivePage() {
     setEditShopIcon(shop.icon);
     setEditShopThemeColor(shop.themeColor || "amber");
     setEditShopDesc(shop.description || "");
+    setEditShopEnableMultiStaffWork(Boolean(shop.enableMultiStaffWork));
+    setEditShopWorkTypeLabel(shop.workTypeLabel || "修理箇所");
   };
 
   // 店舗編集保存
@@ -961,6 +965,8 @@ export default function ExecutivePage() {
       icon: editShopIcon.trim() || "🏪",
       themeColor: editShopThemeColor,
       description: editShopDesc.trim(),
+      enableMultiStaffWork: editShopEnableMultiStaffWork,
+      workTypeLabel: editShopWorkTypeLabel.trim() || "修理箇所",
     });
     setEditingShopId(null);
     alert("店舗情報を更新しました！");
@@ -1287,66 +1293,49 @@ export default function ExecutivePage() {
                 </span>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* 和食さくら */}
-                <div className="bg-stone-950/70 p-4 rounded-2xl border border-stone-800/80">
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-2">
-                      <span className="text-base">🌸</span>
-                      <div>
-                        <span className="font-black text-stone-100 text-sm">和食さくら</span>
-                        <span className="text-[11px] text-stone-500 ml-2">販売 {sakuraItems} 個</span>
-                      </div>
-                    </div>
-                    <span className="text-base font-black text-amber-400">
-                      {formatCurrency(sakuraTotal)}
-                    </span>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2 text-xs pt-2 border-t border-stone-800">
-                    <div className="bg-stone-900/80 p-2 rounded-xl">
-                      <div className="text-[10px] text-stone-400">店舗手元純残り ({storeRate}%)</div>
-                      <div className="font-bold text-white mt-0.5">
-                        {formatCurrency(Math.round(sakuraTotal * (storeRate / 100)))}
-                      </div>
-                    </div>
-                    <div className="bg-stone-900/80 p-2 rounded-xl">
-                      <div className="text-[10px] text-stone-400">スタッフ手渡し済 ({staffIncentiveRate}%)</div>
-                      <div className="font-bold text-stone-300 mt-0.5">
-                        {formatCurrency(Math.round(sakuraTotal * (staffIncentiveRate / 100)))}
-                      </div>
-                    </div>
-                  </div>
-                </div>
+              <div className={`grid gap-4 ${shops.length === 1 ? "grid-cols-1" : "grid-cols-1 md:grid-cols-2"}`}>
+                {shops.map((shop) => {
+                  const shopSummary = currentWeeklySummary.byShop?.[shop.id] || (
+                    shop.id === "sakura" ? currentWeeklySummary.sakura :
+                    shop.id === "buon_viaggio" ? currentWeeklySummary.buonViaggio :
+                    { salesAmount: 0, itemsSold: 0, storeRemaining70: 0, incentive30: 0 }
+                  );
+                  const sTotal = shopSummary.salesAmount;
+                  const sItems = shopSummary.itemsSold;
+                  const sStoreRemaining = shopSummary.storeRemaining70 ?? Math.round(sTotal * (storeRate / 100));
+                  const sStaffIncentive = shopSummary.incentive30 ?? Math.round(sTotal * (staffIncentiveRate / 100));
 
-                {/* Buon viaggio */}
-                <div className="bg-stone-950/70 p-4 rounded-2xl border border-stone-800/80">
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-2">
-                      <span className="text-base">🍷</span>
-                      <div>
-                        <span className="font-black text-stone-100 text-sm">Buon viaggio</span>
-                        <span className="text-[11px] text-stone-500 ml-2">販売 {buonItems} 個</span>
+                  return (
+                    <div key={shop.id} className="bg-stone-950/70 p-4 rounded-2xl border border-stone-800/80">
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          <span className="text-base">{shop.icon || "🏪"}</span>
+                          <div>
+                            <span className="font-black text-stone-100 text-sm">{shop.name}</span>
+                            <span className="text-[11px] text-stone-500 ml-2">販売 {sItems} 個</span>
+                          </div>
+                        </div>
+                        <span className="text-base font-black text-amber-400">
+                          {formatCurrency(sTotal)}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 text-xs pt-2 border-t border-stone-800">
+                        <div className="bg-stone-900/80 p-2 rounded-xl">
+                          <div className="text-[10px] text-stone-400">店舗手元純残り ({storeRate}%)</div>
+                          <div className="font-bold text-white mt-0.5">
+                            {formatCurrency(sStoreRemaining)}
+                          </div>
+                        </div>
+                        <div className="bg-stone-900/80 p-2 rounded-xl">
+                          <div className="text-[10px] text-stone-400">スタッフ手渡し済 ({staffIncentiveRate}%)</div>
+                          <div className="font-bold text-stone-300 mt-0.5">
+                            {formatCurrency(sStaffIncentive)}
+                          </div>
+                        </div>
                       </div>
                     </div>
-                    <span className="text-base font-black text-amber-400">
-                      {formatCurrency(buonTotal)}
-                    </span>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2 text-xs pt-2 border-t border-stone-800">
-                    <div className="bg-stone-900/80 p-2 rounded-xl">
-                      <div className="text-[10px] text-stone-400">店舗手元純残り ({storeRate}%)</div>
-                      <div className="font-bold text-white mt-0.5">
-                        {formatCurrency(Math.round(buonTotal * (storeRate / 100)))}
-                      </div>
-                    </div>
-                    <div className="bg-stone-900/80 p-2 rounded-xl">
-                      <div className="text-[10px] text-stone-400">スタッフ手渡し済 ({staffIncentiveRate}%)</div>
-                      <div className="font-bold text-stone-300 mt-0.5">
-                        {formatCurrency(Math.round(buonTotal * (staffIncentiveRate / 100)))}
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                  );
+                })}
               </div>
             </div>
 
@@ -4902,72 +4891,57 @@ export default function ExecutivePage() {
                   </span>
                 </div>
 
-                {/* 店舗別 実績内訳カード（3カラム: 🌸 和食さくら / 🍷 Buon viaggio / 🏛️ 2店舗合計） */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {/* 🌸 和食さくら */}
-                  <div className="p-4 rounded-2xl bg-stone-950 border border-rose-900/40 space-y-3">
-                    <div className="flex items-center justify-between border-b border-rose-950/60 pb-2">
-                      <span className="text-xs font-black text-rose-400 flex items-center gap-1.5">
-                        <Store className="w-4 h-4 text-rose-500" />
-                        🌸 和食さくら 実績
-                      </span>
-                      <span className="text-[10px] text-stone-400">料理販売: {currentWeeklySummary.sakura.itemsSold}品</span>
-                    </div>
-                    <div className="space-y-2 text-xs">
-                      <div className="flex items-center justify-between">
-                        <span className="text-stone-400">売上高 (100%):</span>
-                        <span className="text-base font-black text-white font-mono">{formatCurrency(currentWeeklySummary.sakura.salesAmount)}</span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-amber-400">手渡済インセンティブ ({staffIncentiveRate}%):</span>
-                        <span className="font-bold text-amber-300 font-mono">{formatCurrency(currentWeeklySummary.sakura.incentive30)}</span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-emerald-400">店舗手元純残り ({storeRate}%):</span>
-                        <span className="font-bold text-emerald-300 font-mono">{formatCurrency(currentWeeklySummary.sakura.storeRemaining70)}</span>
-                      </div>
-                      <div className="flex items-center justify-between pt-1 border-t border-stone-800/80">
-                        <span className="text-stone-400">厨房仕込み数:</span>
-                        <span className="font-bold text-stone-200">{currentWeeklySummary.sakura.craftItemsCount} 個</span>
-                      </div>
-                    </div>
-                  </div>
+                {/* 店舗別 実績内訳カード（動的店舗数対応 + 総合計） */}
+                <div className={`grid gap-4 ${shops.length === 1 ? "grid-cols-1 md:grid-cols-2" : "grid-cols-1 md:grid-cols-2 lg:grid-cols-3"}`}>
+                  {shops.map((shop) => {
+                    const shopSummary = currentWeeklySummary.byShop?.[shop.id] || (
+                      shop.id === "sakura" ? currentWeeklySummary.sakura :
+                      shop.id === "buon_viaggio" ? currentWeeklySummary.buonViaggio :
+                      { salesAmount: 0, itemsSold: 0, storeRemaining70: 0, incentive30: 0, craftItemsCount: 0 }
+                    );
+                    const sTotal = shopSummary.salesAmount;
+                    const sItems = shopSummary.itemsSold;
+                    const sStoreRemaining = shopSummary.storeRemaining70 ?? Math.round(sTotal * (storeRate / 100));
+                    const sStaffIncentive = shopSummary.incentive30 ?? Math.round(sTotal * (staffIncentiveRate / 100));
+                    const sCraft = shopSummary.craftItemsCount || 0;
 
-                  {/* 🍷 Buon viaggio */}
-                  <div className="p-4 rounded-2xl bg-stone-950 border border-purple-900/40 space-y-3">
-                    <div className="flex items-center justify-between border-b border-purple-950/60 pb-2">
-                      <span className="text-xs font-black text-purple-400 flex items-center gap-1.5">
-                        <Store className="w-4 h-4 text-purple-400" />
-                        🍷 Buon viaggio 実績
-                      </span>
-                      <span className="text-[10px] text-stone-400">料理販売: {currentWeeklySummary.buonViaggio.itemsSold}品</span>
-                    </div>
-                    <div className="space-y-2 text-xs">
-                      <div className="flex items-center justify-between">
-                        <span className="text-stone-400">売上高 (100%):</span>
-                        <span className="text-base font-black text-white font-mono">{formatCurrency(currentWeeklySummary.buonViaggio.salesAmount)}</span>
+                    return (
+                      <div key={shop.id} className="p-4 rounded-2xl bg-stone-950 border border-stone-800 space-y-3 shadow-md">
+                        <div className="flex items-center justify-between border-b border-stone-800 pb-2">
+                          <span className="text-xs font-black text-amber-400 flex items-center gap-1.5">
+                            <span className="text-sm">{shop.icon || "🏪"}</span>
+                            {shop.name} 実績
+                          </span>
+                          <span className="text-[10px] text-stone-400">販売: {sItems}点</span>
+                        </div>
+                        <div className="space-y-2 text-xs">
+                          <div className="flex items-center justify-between">
+                            <span className="text-stone-400">売上高 (100%):</span>
+                            <span className="text-base font-black text-white font-mono">{formatCurrency(sTotal)}</span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-amber-400">手渡済インセンティブ ({staffIncentiveRate}%):</span>
+                            <span className="font-bold text-amber-300 font-mono">{formatCurrency(sStaffIncentive)}</span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-emerald-400">店舗手元純残り ({storeRate}%):</span>
+                            <span className="font-bold text-emerald-300 font-mono">{formatCurrency(sStoreRemaining)}</span>
+                          </div>
+                          <div className="flex items-center justify-between pt-1 border-t border-stone-800/80">
+                            <span className="text-stone-400">作成・仕込み数:</span>
+                            <span className="font-bold text-stone-200">{sCraft} 個</span>
+                          </div>
+                        </div>
                       </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-amber-400">手渡済インセンティブ ({staffIncentiveRate}%):</span>
-                        <span className="font-bold text-amber-300 font-mono">{formatCurrency(currentWeeklySummary.buonViaggio.incentive30)}</span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-emerald-400">店舗手元純残り ({storeRate}%):</span>
-                        <span className="font-bold text-emerald-300 font-mono">{formatCurrency(currentWeeklySummary.buonViaggio.storeRemaining70)}</span>
-                      </div>
-                      <div className="flex items-center justify-between pt-1 border-t border-stone-800/80">
-                        <span className="text-stone-400">厨房仕込み数:</span>
-                        <span className="font-bold text-stone-200">{currentWeeklySummary.buonViaggio.craftItemsCount} 個</span>
-                      </div>
-                    </div>
-                  </div>
+                    );
+                  })}
 
-                  {/* 🏛️ 2店舗 総合計 */}
-                  <div className="p-4 rounded-2xl bg-stone-950 border border-amber-500/40 space-y-3">
+                  {/* 🏛️ 全店舗 総合計 */}
+                  <div className="p-4 rounded-2xl bg-stone-950 border border-amber-500/40 space-y-3 shadow-md">
                     <div className="flex items-center justify-between border-b border-amber-500/30 pb-2">
                       <span className="text-xs font-black text-amber-400 flex items-center gap-1.5">
                         <Sparkles className="w-4 h-4 text-amber-400" />
-                        🏛️ 2店舗 総合計
+                        🏛️ 全店舗 総合計
                       </span>
                       <span className="text-[10px] text-amber-300/80 font-bold">全体サマリー</span>
                     </div>
@@ -4985,7 +4959,7 @@ export default function ExecutivePage() {
                         <span className="font-bold text-emerald-300 font-mono">{formatCurrency(currentWeeklySummary.totalStoreRemaining70)}</span>
                       </div>
                       <div className="flex items-center justify-between pt-1 border-t border-stone-800/80">
-                        <span className="text-stone-300">厨房総仕込み数:</span>
+                        <span className="text-stone-300">総仕込み・作成数:</span>
                         <span className="font-bold text-indigo-300">{currentWeeklySummary.totalCraftItems} 個</span>
                       </div>
                     </div>
@@ -6093,7 +6067,59 @@ export default function ExecutivePage() {
                 </button>
               </div>
 
-              {/* ③ 店舗手元純残りの割合設定 */}
+              {/* ③ 商品在庫の全店舗共通化設定 */}
+              <div
+                className={`p-5 rounded-2xl border transition-all flex items-center justify-between gap-4 md:col-span-2 ${
+                  storeSettings.sharedInventoryAcrossShops
+                    ? "bg-stone-950 border-teal-500/50 shadow-xs"
+                    : "bg-stone-950/60 border-stone-800 opacity-80"
+                }`}
+              >
+                <div className="flex items-start gap-3">
+                  <div
+                    className={`w-12 h-12 rounded-2xl flex items-center justify-center text-xl shrink-0 ${
+                      storeSettings.sharedInventoryAcrossShops
+                        ? "bg-teal-950 text-teal-400 border border-teal-600/40"
+                        : "bg-stone-800 text-stone-500"
+                    }`}
+                  >
+                    🔗
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-extrabold text-base text-white">商品の在庫を全店舗共通にする設定</span>
+                      <span
+                        className={`text-[10px] font-black px-2.5 py-0.5 rounded-full ${
+                          storeSettings.sharedInventoryAcrossShops
+                            ? "bg-teal-950 text-teal-300 border border-teal-500/50"
+                            : "bg-stone-800 text-stone-400"
+                        }`}
+                      >
+                        {storeSettings.sharedInventoryAcrossShops ? "一緒にする (共通在庫ON)" : "店舗ごとに個別 (個別在庫)"}
+                      </span>
+                    </div>
+                    <p className="text-xs text-stone-400 mt-1 leading-relaxed">
+                      複数店舗（例: 和食さくら / Buon viaggio 等）で同名商品の在庫数を共有・合算します。「一緒にする」に設定すると、どの店舗で販売しても共通の在庫から消費され、在庫数も両店で同じ数値に同期されます。
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    updateStoreSettings({ sharedInventoryAcrossShops: !storeSettings.sharedInventoryAcrossShops })
+                  }
+                  className={`px-4 py-2.5 rounded-xl text-xs font-black transition-all shrink-0 cursor-pointer shadow-md active:scale-95 ${
+                    storeSettings.sharedInventoryAcrossShops
+                      ? "bg-teal-600 hover:bg-teal-700 text-white shadow-teal-900/30"
+                      : "bg-stone-800 hover:bg-stone-700 text-stone-300 border border-stone-700"
+                  }`}
+                >
+                  {storeSettings.sharedInventoryAcrossShops ? "一緒にする (有効中)" : "店舗ごとに個別 (無効)"}
+                </button>
+              </div>
+
+              {/* ④ 店舗手元純残りの割合設定 */}
               <div className="p-5 rounded-2xl border border-amber-500/50 bg-stone-950 shadow-xs md:col-span-2 space-y-4">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-stone-800 pb-3">
                   <div className="flex items-start gap-3">
@@ -6495,6 +6521,38 @@ export default function ExecutivePage() {
                             onChange={(e) => setEditShopDesc(e.target.value)}
                             className="w-full px-2.5 py-1.5 bg-stone-900 rounded-lg border border-stone-700 text-xs text-stone-300 focus:border-amber-500"
                           />
+                        </div>
+
+                        {/* 複数人作業・出張修理設定 */}
+                        <div className="p-2.5 rounded-xl bg-stone-900/80 border border-stone-800 space-y-2">
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={editShopEnableMultiStaffWork}
+                              onChange={(e) => setEditShopEnableMultiStaffWork(e.target.checked)}
+                              className="w-4 h-4 rounded text-amber-600 accent-amber-500 cursor-pointer"
+                            />
+                            <span className="text-xs font-bold text-amber-300">
+                              👥 複数人作業・出張修理入力（メカニック等）を利用する
+                            </span>
+                          </label>
+                          <p className="text-[10px] text-stone-400 pl-6 leading-relaxed">
+                            出張修理等で複数台・複数箇所を数人で作業し、合算金額を各自の担当箇所数に応じて売上按分できるようにします。
+                          </p>
+                          {editShopEnableMultiStaffWork && (
+                            <div className="pl-6 pt-1">
+                              <label className="block text-[10px] font-bold text-stone-300 mb-0.5">
+                                作業箇所の呼称 (例: 修理箇所, 作業台数):
+                              </label>
+                              <input
+                                type="text"
+                                value={editShopWorkTypeLabel}
+                                onChange={(e) => setEditShopWorkTypeLabel(e.target.value)}
+                                placeholder="修理箇所"
+                                className="w-full px-2.5 py-1 bg-stone-950 rounded-lg border border-stone-700 text-xs text-white focus:border-amber-500"
+                              />
+                            </div>
+                          )}
                         </div>
 
                         <div className="pt-2 flex items-center justify-end gap-2 border-t border-stone-800">

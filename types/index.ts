@@ -28,6 +28,7 @@ export interface StaffUser {
 export interface StoreSettings {
   enableCrafting: boolean;          // クラフト作成機能をする(true)/しない(false)
   enableInventory: boolean;         // 全体在庫管理をする(true)/しない(false)
+  sharedInventoryAcrossShops?: boolean; // 商品の在庫を両店とも一緒にする設定 (全店舗共通在庫モード)
   storeRemainingRate?: number;      // 店舗手元純残り割合 (%) (デフォルト: 70)
   ingredientRewardRate?: number;    // 素材調達手当 (円/個)
   craftRewardRate?: number;         // クラフト仕込み手当 (円/個)
@@ -70,6 +71,8 @@ export interface ShopDefinition {
   color?: string;     // alias for themeColor
   logoUrl?: string;
   description?: string;
+  enableMultiStaffWork?: boolean; // 複数人作業・出張修理入力モードの有効化
+  workTypeLabel?: string;        // 作業呼称 (例: "修理箇所", "作業台数", "分担箇所")
 }
 
 export interface SiteBranding {
@@ -140,9 +143,24 @@ export interface SaleItem {
 
 export type PaymentMethod = "credit" | "qr" | "cash" | "card" | "ic_card" | "electronic" | "fivem_cash";
 
+export interface StaffWorkShare {
+  userId: string;
+  staffName: string;
+  workCount: number;         // 担当した修理箇所数/台数 (例: 2箇所)
+  shareRate: number;         // 按分割合 (0.0 〜 1.0)
+  allocatedAmount: number;   // 按分された売上金額 (¥)
+}
+
+export interface MultiStaffAssignment {
+  enabled: boolean;
+  totalWorkCount: number;    // 合計修理箇所数/台数 (例: 5箇所)
+  workLocations?: string;    // 修理箇所・修理内容詳細 (例: "右ドア板金、フロントバンパー交換、足回り整備")
+  staffShares: StaffWorkShare[]; // 各スタッフの担当割当
+}
+
 export interface Sale {
   id: string;
-  shopId?: ShopId;      // どの店舗での売上か ("sakura" | "buon_viaggio")
+  shopId?: ShopId;      // どの店舗での売上か ("sakura" | "buon_viaggio" | "factory" など)
   staffName: string;
   staffUserId?: string; // 担当スタッフのID (スタッフ別売上集計用)
   totalAmount: number;
@@ -151,6 +169,8 @@ export interface Sale {
   discountReason?: string;         // 調整値引きの理由・メモ
   items: SaleItem[];
   created_at: string;
+  // 複数人作業・出張修理分担データ
+  multiStaffAssignment?: MultiStaffAssignment;
   // 販売時点の店舗手元純残り・インセンティブ記録（割合設定変更の影響を受けないように固定化）
   storeRemainingRate?: number;     // 販売時点の店舗手元純残り割合 (%)
   storeRemainingAmount?: number;   // 販売時点の店舗手元純残り額 (金庫入金分)
@@ -227,6 +247,9 @@ export interface StaffWeeklyStat {
   buonViaggioSalesAmount: number; // Buon viaggio 売上額
   sakuraItemsSold: number;     // 和食さくら 販売個数
   buonViaggioItemsSold: number;// Buon viaggio 販売個数
+  // 動的店舗別売上マップ
+  shopSalesAmounts?: { [shopId: string]: number };
+  shopItemsSold?: { [shopId: string]: number };
   salesCount: number;          // 販売伝票件数
   itemsSold: number;           // 販売した料理個数
   incentive30: number;         // 手渡しインセンティブ (3割 / 30%)
@@ -257,9 +280,10 @@ export interface WeeklySummary {
   isFinalized: boolean;        // 店主がボーナス確定済みかどうか
   finalizedAt?: string;
   finalizedBy?: string;        // 例: "kein"
-  // 各店舗別の売上・実績
-  sakura: ShopWeeklySummary;      // 和食さくら
-  buonViaggio: ShopWeeklySummary; // Buon viaggio
+  // 各店舗別の売上・実績 (動的店舗マップ)
+  byShop?: { [shopId: string]: ShopWeeklySummary };
+  sakura: ShopWeeklySummary;      // 和食さくら (互換用)
+  buonViaggio: ShopWeeklySummary; // Buon viaggio (互換用)
   // 店舗全体合計
   totalSales: number;          // 店舗総売上 (100%)
   totalIncentive30: number;    // スタッフ手渡しインセンティブ総額 (3割)

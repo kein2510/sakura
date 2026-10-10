@@ -8,6 +8,7 @@ import {
   Item,
   RecipeRequirement,
   Sale,
+  MultiStaffAssignment,
   ActionLog,
   ActionCategory,
   StaffPerformance,
@@ -142,12 +143,13 @@ interface AppContextType {
   products: Item[];
   ingredients: Item[];
 
-  // メイン業務アクション (店舗shopId指定・調整値引き対応)
+  // メイン業務アクション (店舗shopId指定・調整値引き対応・複数人作業分担対応)
   sellProducts: (
     quantities: { [itemId: string]: number },
     shopId?: ShopId,
     discountAmount?: number,
-    discountReason?: string
+    discountReason?: string,
+    multiStaffAssignment?: MultiStaffAssignment
   ) => {
     success: boolean;
     message: string;
@@ -1545,47 +1547,75 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const finalizedBy = savedRecord?.finalizedBy;
 
     const staffStats: StaffWeeklyStat[] = users.map((u) => {
-      const userSales = weekSales.filter(
-        (s) => s.staffUserId === u.id || s.staffName === u.displayName || s.staff_name === u.displayName
-      );
-      const salesAmount = userSales.reduce(
-        (sum, s) => sum + (s.totalAmount ?? s.total_amount ?? 0),
-        0
-      );
-      const sakuraSales = userSales.filter((s) => (s.shopId || "sakura") === "sakura");
-      const bvSales = userSales.filter((s) => s.shopId === "buon_viaggio");
-
-      const sakuraSalesAmount = sakuraSales.reduce((sum, s) => sum + (s.totalAmount ?? s.total_amount ?? 0), 0);
-      const buonViaggioSalesAmount = bvSales.reduce((sum, s) => sum + (s.totalAmount ?? s.total_amount ?? 0), 0);
-
-      let sakuraItemsSold = 0;
-      sakuraSales.forEach((s) => {
-        s.items?.forEach((it) => { sakuraItemsSold += it.quantity || 0; });
-      });
-      let buonViaggioItemsSold = 0;
-      bvSales.forEach((s) => {
-        s.items?.forEach((it) => { buonViaggioItemsSold += it.quantity || 0; });
-      });
-
-      const salesCount = userSales.length;
-      const itemsSold = sakuraItemsSold + buonViaggioItemsSold;
-
-      // 各伝票の販売時点の割合・金額を正確に合算（設定変更で過去伝票が変動しないように固定）
+      // 当該スタッフが関わった売上伝票（単独担当 または 複数人作業の参加者）
+      let salesAmount = 0;
+      let salesCount = 0;
+      let itemsSold = 0;
       let storeRemaining70 = 0;
       let incentive30 = 0;
-      userSales.forEach((s) => {
+      const userSales: Sale[] = [];
+      const shopSalesAmounts: { [shopId: string]: number } = {};
+      const shopItemsSold: { [shopId: string]: number } = {};
+      shops.forEach((sp) => {
+        shopSalesAmounts[sp.id] = 0;
+        shopItemsSold[sp.id] = 0;
+      });
+
+      weekSales.forEach((s) => {
+        const sShopId = s.shopId || shops[0]?.id || "sakura";
         const amt = s.totalAmount ?? s.total_amount ?? 0;
-        if (s.storeRemainingAmount !== undefined && s.staffIncentiveAmount !== undefined) {
-          storeRemaining70 += s.storeRemainingAmount;
-          incentive30 += s.staffIncentiveAmount;
+        const sItemsCount = s.items?.reduce((acc, it) => acc + (it.quantity || 0), 0) || 0;
+
+        // 複数人按分（出張修理など）が有効な伝票の場合
+        if (s.multiStaffAssignment?.enabled && s.multiStaffAssignment.staffShares?.length > 0) {
+          const share = s.multiStaffAssignment.staffShares.find(
+            (sh) => sh.userId === u.id || sh.staffName === u.displayName
+          );
+          if (share) {
+            userSales.push(s);
+            salesCount += 1;
+            const staffAmt = share.allocatedAmount;
+            salesAmount += staffAmt;
+            shopSalesAmounts[sShopId] = (shopSalesAmounts[sShopId] || 0) + staffAmt;
+
+            const staffItems = Math.max(1, Math.round(sItemsCount * share.shareRate));
+            itemsSold += staffItems;
+            shopItemsSold[sShopId] = (shopItemsSold[sShopId] || 0) + staffItems;
+
+            // 店舗純残り & インセンティブも按分比率で計算
+            const remRate = s.storeRemainingRate ?? 70;
+            const rem = Math.round(staffAmt * (remRate / 100));
+            storeRemaining70 += rem;
+            incentive30 += (staffAmt - rem);
+          }
         } else {
-          // 過去伝票で未記録のものは、伝票の割合または過去デフォルト70%を固定適用
-          const rate = s.storeRemainingRate ?? 70;
-          const rem = Math.round(amt * (rate / 100));
-          storeRemaining70 += rem;
-          incentive30 += (amt - rem);
+          // 通常の単独担当伝票
+          const isUserMatch = s.staffUserId === u.id || s.staffName === u.displayName || s.staff_name === u.displayName;
+          if (isUserMatch) {
+            userSales.push(s);
+            salesCount += 1;
+            salesAmount += amt;
+            shopSalesAmounts[sShopId] = (shopSalesAmounts[sShopId] || 0) + amt;
+            itemsSold += sItemsCount;
+            shopItemsSold[sShopId] = (shopItemsSold[sShopId] || 0) + sItemsCount;
+
+            if (s.storeRemainingAmount !== undefined && s.staffIncentiveAmount !== undefined) {
+              storeRemaining70 += s.storeRemainingAmount;
+              incentive30 += s.staffIncentiveAmount;
+            } else {
+              const rate = s.storeRemainingRate ?? 70;
+              const rem = Math.round(amt * (rate / 100));
+              storeRemaining70 += rem;
+              incentive30 += (amt - rem);
+            }
+          }
         }
       });
+
+      const sakuraSalesAmount = shopSalesAmounts["sakura"] || 0;
+      const buonViaggioSalesAmount = shopSalesAmounts["buon_viaggio"] || 0;
+      const sakuraItemsSold = shopItemsSold["sakura"] || 0;
+      const buonViaggioItemsSold = shopItemsSold["buon_viaggio"] || 0;
 
       const userCraftLogs = weekLogs.filter(
         (l) => l.userName === u.displayName && l.category === "craft"
@@ -1731,26 +1761,38 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       };
     });
 
-    const sakuraSalesTotal = staffStats.reduce((sum, s) => sum + s.sakuraSalesAmount, 0);
-    const sakuraStoreRemaining70 = weekSales
-      .filter((s) => (s.shopId || "sakura") === "sakura")
-      .reduce((sum, s) => {
+    // 全店舗ごとの動的集計マップ (byShop)
+    const byShop: { [shopId: string]: { salesAmount: number; incentive30: number; storeRemaining70: number; craftItemsCount: number; itemsSold: number } } = {};
+    shops.forEach((sp) => {
+      const spSales = weekSales.filter((s) => (s.shopId || shops[0]?.id || "sakura") === sp.id);
+      const spSalesTotal = spSales.reduce((sum, s) => sum + (s.totalAmount ?? s.total_amount ?? 0), 0);
+      const spStoreRemaining = spSales.reduce((sum, s) => {
         if (s.storeRemainingAmount !== undefined) return sum + s.storeRemainingAmount;
         const amt = s.totalAmount ?? s.total_amount ?? 0;
         const rate = s.storeRemainingRate ?? 70;
         return sum + Math.round(amt * (rate / 100));
       }, 0);
+      const spIncentive = spSalesTotal - spStoreRemaining;
+      let spItemsSold = 0;
+      spSales.forEach((s) => {
+        s.items?.forEach((it) => { spItemsSold += it.quantity || 0; });
+      });
+
+      byShop[sp.id] = {
+        salesAmount: spSalesTotal,
+        incentive30: spIncentive,
+        storeRemaining70: spStoreRemaining,
+        craftItemsCount: staffStats.reduce((sum, s) => sum + (s.shopSalesAmounts?.[sp.id] ? s.craftItemsCount : 0), 0),
+        itemsSold: spItemsSold,
+      };
+    });
+
+    const sakuraSalesTotal = byShop["sakura"]?.salesAmount ?? staffStats.reduce((sum, s) => sum + s.sakuraSalesAmount, 0);
+    const sakuraStoreRemaining70 = byShop["sakura"]?.storeRemaining70 ?? 0;
     const sakuraIncentive30 = sakuraSalesTotal - sakuraStoreRemaining70;
 
-    const bvSalesTotal = staffStats.reduce((sum, s) => sum + s.buonViaggioSalesAmount, 0);
-    const bvStoreRemaining70 = weekSales
-      .filter((s) => s.shopId === "buon_viaggio")
-      .reduce((sum, s) => {
-        if (s.storeRemainingAmount !== undefined) return sum + s.storeRemainingAmount;
-        const amt = s.totalAmount ?? s.total_amount ?? 0;
-        const rate = s.storeRemainingRate ?? 70;
-        return sum + Math.round(amt * (rate / 100));
-      }, 0);
+    const bvSalesTotal = byShop["buon_viaggio"]?.salesAmount ?? staffStats.reduce((sum, s) => sum + s.buonViaggioSalesAmount, 0);
+    const bvStoreRemaining70 = byShop["buon_viaggio"]?.storeRemaining70 ?? 0;
     const bvIncentive30 = bvSalesTotal - bvStoreRemaining70;
 
     const totalSales = staffStats.reduce((sum, s) => sum + s.salesAmount, 0);
@@ -1771,14 +1813,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       isFinalized,
       finalizedAt,
       finalizedBy,
-      sakura: {
+      byShop,
+      sakura: byShop["sakura"] || {
         salesAmount: sakuraSalesTotal,
         incentive30: sakuraIncentive30,
         storeRemaining70: sakuraStoreRemaining70,
         craftItemsCount: staffStats.reduce((sum, s) => sum + s.craftItemsCount, 0),
         itemsSold: staffStats.reduce((sum, s) => sum + s.sakuraItemsSold, 0),
       },
-      buonViaggio: {
+      buonViaggio: byShop["buon_viaggio"] || {
         salesAmount: bvSalesTotal,
         incentive30: bvIncentive30,
         storeRemaining70: bvStoreRemaining70,
@@ -2031,12 +2074,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const products = items.filter((i) => i.type === "product");
   const ingredients = items.filter((i) => i.type === "ingredient");
 
-  // 3. メイン画面: 「売る」処理（調整値引き対応）
+  // 3. メイン画面: 「売る」処理（調整値引き・複数人作業分担・出張修理対応）
   const sellProducts = (
     quantities: { [itemId: string]: number },
     shopId?: ShopId,
     discountAmount?: number,
-    discountReason?: string
+    discountReason?: string,
+    multiStaffAssignment?: MultiStaffAssignment
   ): {
     success: boolean;
     message: string;
@@ -2089,10 +2133,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     // 在庫の減算（在庫管理機能が有効な場合のみ減算）
     if (storeSettings.enableInventory) {
       const updatedItemsList: Item[] = [];
+      const deductedNames = new Set<string>();
       setItems((prevItems) => {
         return prevItems.map((item) => {
           const orderQty = quantities[item.id] || 0;
           if (orderQty > 0) {
+            deductedNames.add(item.name);
             const updated = {
               ...item,
               current_stock: Math.max(0, item.current_stock - orderQty),
@@ -2101,14 +2147,28 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             updatedItemsList.push(updated);
             return updated;
           }
+          // 全店舗共通在庫モードがONの場合、同名アイテムの別店舗在庫も連動して同じ数値に保つ
+          if (storeSettings.sharedInventoryAcrossShops && deductedNames.has(item.name)) {
+            const matchingUpdated = updatedItemsList.find((u) => u.name === item.name);
+            if (matchingUpdated) {
+              const synced = {
+                ...item,
+                current_stock: matchingUpdated.current_stock,
+                updated_at: new Date().toISOString(),
+              };
+              updatedItemsList.push(synced);
+              return synced;
+            }
+          }
           return item;
         });
       });
       syncItemsBatchToCloud(updatedItemsList);
     }
 
-    const finalShopId: ShopId = determinedShopId || "sakura";
-    const shopName = finalShopId === "buon_viaggio" ? "Buon viaggio" : "和食さくら";
+    const finalShopId: ShopId = determinedShopId || shops[0]?.id || "sakura";
+    const currentShopDef = shops.find((s) => s.id === finalShopId);
+    const shopName = currentShopDef ? currentShopDef.name : (finalShopId === "buon_viaggio" ? "Buon viaggio" : "和食さくら");
 
     // 金庫残高への店舗手元純残り入金 ＆ 販売時点の割合記録（値引き後の実売上から按分）
     const storeRemainingPercent = storeSettings.storeRemainingRate ?? 70;
@@ -2120,20 +2180,41 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       ? `【調整値引き: -¥${validDiscount.toLocaleString()}${discountReason?.trim() ? ` (${discountReason.trim()})` : ""}】`
       : undefined;
 
+    // 複数人作業分担の判定
+    const isMultiStaff = Boolean(multiStaffAssignment?.enabled && multiStaffAssignment.staffShares?.length > 0);
+    const multiStaffNames = isMultiStaff
+      ? multiStaffAssignment!.staffShares.map((sh) => `${sh.staffName} (${sh.workCount}箇所 / ¥${sh.allocatedAmount.toLocaleString()})`).join("、")
+      : "";
+
+    const primaryStaffName = isMultiStaff
+      ? multiStaffAssignment!.staffShares.map((sh) => sh.staffName).join(", ")
+      : (currentUser ? currentUser.displayName : "店員");
+
+    const primaryStaffId = isMultiStaff
+      ? multiStaffAssignment!.staffShares[0]?.userId
+      : (currentUser ? currentUser.id : undefined);
+
+    let notesText = discountNote || "";
+    if (isMultiStaff) {
+      const multiNote = `【👥 複数人共同作業: ${multiStaffNames}${multiStaffAssignment?.workLocations ? ` / 修理箇所: ${multiStaffAssignment.workLocations}` : ""}】`;
+      notesText = notesText ? `${notesText} ${multiNote}` : multiNote;
+    }
+
     const newSale: Sale = {
       id: `sale-${Date.now().toString().slice(-6)}`,
       shopId: finalShopId,
-      staffName: currentUser ? currentUser.displayName : "店員",
-      staffUserId: currentUser ? currentUser.id : undefined,
+      staffName: primaryStaffName,
+      staffUserId: primaryStaffId,
       totalAmount: finalSaleAmount,
       total_amount: finalSaleAmount,
       subtotalAmount: subtotal,
       discountAmount: validDiscount > 0 ? validDiscount : undefined,
       discountReason: discountReason?.trim() || undefined,
-      staff_name: currentUser ? currentUser.displayName : "店員",
-      notes: discountNote,
+      staff_name: primaryStaffName,
+      notes: notesText || undefined,
       items: saleItemsList,
       created_at: new Date().toISOString(),
+      multiStaffAssignment: isMultiStaff ? multiStaffAssignment : undefined,
       storeRemainingRate: storeRemainingPercent,
       storeRemainingAmount: storeRemainingAmount,
       staffIncentiveAmount: incentiveAmount,
@@ -2162,6 +2243,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     // 操作ログ記録
     const summaryText = saleItemsList.map((s) => `${s.itemName}×${s.quantity}`).join(", ");
+    const multiLogText = isMultiStaff ? ` [共同作業: ${multiStaffNames}${multiStaffAssignment?.workLocations ? ` (箇所: ${multiStaffAssignment.workLocations})` : ""}]` : "";
     const saleLogTitle = validDiscount > 0
       ? `【${shopName}】商品の販売 (売上 ¥${finalSaleAmount.toLocaleString()} [値引き -¥${validDiscount.toLocaleString()}] / 店手元${storeRemainingPercent}% ¥${storeRemainingAmount.toLocaleString()})`
       : `【${shopName}】商品の販売 (売上 ¥${finalSaleAmount.toLocaleString()} / 店手元${storeRemainingPercent}% ¥${storeRemainingAmount.toLocaleString()})`;
@@ -2169,13 +2251,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     logAction({
       category: "sale",
       title: saleLogTitle,
-      detail: `販売明細: ${summaryText} (在庫減算済)${validDiscount > 0 ? ` ※調整値引き: -¥${validDiscount.toLocaleString()}${discountReason ? ` (${discountReason})` : ""}` : ""}`,
+      detail: `販売明細: ${summaryText}${multiLogText} (在庫減算済)${validDiscount > 0 ? ` ※調整値引き: -¥${validDiscount.toLocaleString()}${discountReason ? ` (${discountReason})` : ""}` : ""}`,
     });
 
     const discountMsgPart = validDiscount > 0 ? ` (値引き: -¥${validDiscount.toLocaleString()})` : "";
+    const multiMsgPart = isMultiStaff ? ` [複数人按分: ${multiStaffAssignment!.staffShares.length}名]` : "";
     return {
       success: true,
-      message: `【${shopName}】商品を販売しました！売上: ¥${finalSaleAmount.toLocaleString()}${discountMsgPart} (手渡し${incentivePercent}%: ¥${incentiveAmount.toLocaleString()} / 金庫入金${storeRemainingPercent}%: ¥${storeRemainingAmount.toLocaleString()})`,
+      message: `【${shopName}】商品を販売しました！売上: ¥${finalSaleAmount.toLocaleString()}${discountMsgPart}${multiMsgPart} (手渡し${incentivePercent}%: ¥${incentiveAmount.toLocaleString()} / 金庫入金${storeRemainingPercent}%: ¥${storeRemainingAmount.toLocaleString()})`,
     };
   };
 
