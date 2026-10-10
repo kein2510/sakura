@@ -453,9 +453,9 @@ export default function MainPage() {
       )}
 
       {/* メイン2カラムレイアウト: 左=赤枠(店舗切替 ＆ 会計・アクション), 右=青枠(商品一覧) */}
-      <div className="max-w-[1700px] mx-auto flex flex-col lg:flex-row gap-5 lg:gap-6 items-start pb-16">
+      <div className="max-w-[1700px] mx-auto flex flex-col md:flex-row gap-4 md:gap-6 items-start pb-16">
         {/* 🟥 左カラム: 店舗切り替え ＆ 会計・アクションパネル (赤枠) */}
-        <div className="w-full lg:w-[420px] xl:w-[460px] shrink-0 space-y-4 lg:sticky lg:top-4 z-20">
+        <div className="w-full md:w-[380px] lg:w-[420px] xl:w-[440px] shrink-0 space-y-4 md:sticky md:top-4 z-20">
           {/* ① 店舗切り替えセレクター */}
           <div className="bg-stone-900/90 border border-stone-800 p-4 rounded-2xl shadow-xl space-y-3">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-stone-800/80 pb-2.5">
@@ -1063,7 +1063,6 @@ export default function MainPage() {
             </div>
           )}
         </div>
-      </div>
 
         {/* 🟦 右カラム: 商品一覧 ＆ カテゴリータブ (青枠) */}
         <div className="flex-1 min-w-0 space-y-4">
@@ -1288,5 +1287,6 @@ export default function MainPage() {
       </div>
     </div>
   </div>
+</div>
 );
 }
