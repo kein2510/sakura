@@ -262,16 +262,39 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
   });
 
-  // サイトを開いたときは常に未ログイン状態（同一タブ内での作業中リロードのみセッション復元）
+  // 1週間（7日間）のセッション有効期限 (ミリ秒)
+  const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+  // ログインセッションの復元 (localStorage による1週間自動ログイン維持 ＆ 期限切れチェック)
   const [currentUser, setCurrentUser] = useState<StaffUser | null>(() => {
     if (typeof window !== "undefined") {
-      const saved = sessionStorage.getItem("fivem_sakura_session");
-      if (saved) {
-        try {
-          return JSON.parse(saved);
-        } catch {
-          // ignore
+      try {
+        const saved = localStorage.getItem("fivem_sakura_session") || sessionStorage.getItem("fivem_sakura_session");
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          // 新形式: { user: StaffUser, expiresAt: number }
+          if (parsed && parsed.user && typeof parsed.expiresAt === "number") {
+            if (Date.now() < parsed.expiresAt) {
+              return parsed.user;
+            } else {
+              // 1週間が経過したためセッション期限切れ
+              localStorage.removeItem("fivem_sakura_session");
+              sessionStorage.removeItem("fivem_sakura_session");
+              return null;
+            }
+          }
+          // 旧形式 (StaffUser 単体)
+          if (parsed && parsed.id && parsed.username) {
+            const sessionData = {
+              user: parsed,
+              expiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000,
+            };
+            localStorage.setItem("fivem_sakura_session", JSON.stringify(sessionData));
+            return parsed;
+          }
         }
+      } catch (e) {
+        console.error("Failed to restore session:", e);
       }
     }
     return null;
@@ -543,8 +566,24 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (typeof window !== "undefined") {
       try {
         if (currentUser) {
-          sessionStorage.setItem("fivem_sakura_session", JSON.stringify(currentUser));
+          // 既存の有効期限があれば維持、なければ7日後
+          let expiresAt = Date.now() + 7 * 24 * 60 * 60 * 1000;
+          const saved = localStorage.getItem("fivem_sakura_session");
+          if (saved) {
+            try {
+              const parsed = JSON.parse(saved);
+              if (parsed?.expiresAt && typeof parsed.expiresAt === "number" && parsed.expiresAt > Date.now()) {
+                expiresAt = parsed.expiresAt;
+              }
+            } catch {
+              // ignore
+            }
+          }
+          const sessionData = { user: currentUser, expiresAt };
+          localStorage.setItem("fivem_sakura_session", JSON.stringify(sessionData));
+          sessionStorage.setItem("fivem_sakura_session", JSON.stringify(sessionData));
         } else {
+          localStorage.removeItem("fivem_sakura_session");
           sessionStorage.removeItem("fivem_sakura_session");
         }
       } catch {
@@ -1068,9 +1107,29 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         }
       });
 
+    // セッション有効期限（1週間）のチェック
+    const checkSessionExpiry = () => {
+      if (typeof window === "undefined") return;
+      try {
+        const saved = localStorage.getItem("fivem_sakura_session");
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (parsed?.expiresAt && typeof parsed.expiresAt === "number" && Date.now() >= parsed.expiresAt) {
+            localStorage.removeItem("fivem_sakura_session");
+            sessionStorage.removeItem("fivem_sakura_session");
+            setCurrentUser(null);
+            alert("ログイン有効期間（1週間）が経過しました。セキュリティのため再度ログインしてください。");
+          }
+        }
+      } catch {
+        // ignore
+      }
+    };
+
     // 画面フォーカス時またはタブ復帰時の自動再同期（サイレント同期：ステータス表示をチラつかせない）
     const handleFocus = () => {
       if (document.visibilityState === "visible") {
+        checkSessionExpiry();
         fetchCloudData(true);
       }
     };
@@ -1079,6 +1138,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     // 15秒ごとの定期バックアップ同期（サイレント同期：ステータス表示をチラつかせない）
     const intervalTimer = setInterval(() => {
+      checkSessionExpiry();
       fetchCloudData(true);
     }, 15000);
 
@@ -1092,7 +1152,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     };
   }, [fetchCloudData]);
 
-  // 1. ログイン処理 (名前とPASS)
+  // 1. ログイン処理 (名前とPASS - 1週間自動ログイン)
   const login = (username: string, pass: string): { success: boolean; message?: string } => {
     const trimmedUser = username.trim().toLowerCase();
     const trimmedPass = pass.trim();
@@ -1103,13 +1163,26 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     if (found) {
       setCurrentUser(found);
+      if (typeof window !== "undefined") {
+        const sessionData = {
+          user: found,
+          expiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000, // 7日後
+        };
+        try {
+          localStorage.setItem("fivem_sakura_session", JSON.stringify(sessionData));
+          sessionStorage.setItem("fivem_sakura_session", JSON.stringify(sessionData));
+        } catch {
+          // ignore
+        }
+      }
+
       const newLog: ActionLog = {
         id: `log-${Date.now()}`,
         userName: found.displayName,
         userRole: found.role,
         category: "auth",
         title: "ログイン成功",
-        detail: `「${found.displayName} (${found.role === "executive" ? "幹部" : "スタッフ"})」がログインしました`,
+        detail: `「${found.displayName} (${found.role === "executive" ? "幹部" : "スタッフ"})」がログインしました (自動ログイン有効期限: 1週間)`,
         created_at: new Date().toISOString(),
       };
       setActionLogs((prev) => [newLog, ...prev]);

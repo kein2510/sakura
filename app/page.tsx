@@ -443,20 +443,22 @@ export default function MainPage() {
   };
 
   return (
-    <div className="w-full min-h-full">
-      {/* 画面上部コントロールバー（ヘッダー直下に隙間ゼロで完全吸着する全幅不透明 sticky バー） */}
-      <div className="sticky top-0 z-30 w-full bg-stone-950 border-b border-stone-800 shadow-2xl px-4 md:px-6 py-4">
-        <div className="max-w-6xl mx-auto space-y-3">
-          {/* リアルタイム同期通知 */}
-          {realtimeNotice && (
-            <div className="bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 animate-bounce">
-              <Radio className="w-4 h-4 text-emerald-400 animate-pulse" />
-              <span>{realtimeNotice}</span>
-            </div>
-          )}
+    <div className="w-full min-h-full px-3 sm:px-4 md:px-6 py-4">
+      {/* リアルタイム同期通知 */}
+      {realtimeNotice && (
+        <div className="max-w-[1700px] mx-auto mb-3 bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 animate-bounce">
+          <Radio className="w-4 h-4 text-emerald-400 animate-pulse" />
+          <span>{realtimeNotice}</span>
+        </div>
+      )}
 
+      {/* メイン2カラムレイアウト: 左=赤枠(店舗切替 ＆ 会計・アクション), 右=青枠(商品一覧) */}
+      <div className="max-w-[1700px] mx-auto flex flex-col lg:flex-row gap-5 lg:gap-6 items-start pb-16">
+        {/* 🟥 左カラム: 店舗切り替え ＆ 会計・アクションパネル (赤枠) */}
+        <div className="w-full lg:w-[420px] xl:w-[460px] shrink-0 space-y-4 lg:sticky lg:top-4 z-20">
           {/* ① 店舗切り替えセレクター */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-stone-800/80 pb-2.5">
+          <div className="bg-stone-900/90 border border-stone-800 p-4 rounded-2xl shadow-xl space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-stone-800/80 pb-2.5">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-xs font-black text-stone-400 flex items-center gap-1.5">
                 <Store className="w-4 h-4 text-amber-500" />
@@ -514,119 +516,129 @@ export default function MainPage() {
               </span>
             </div>
           </div>
+        </div>
 
-          {/* ② 合計金額 & 売る・作成アクションバー（完全不透明 bg-stone-900・高さ固定） */}
-          <div className="bg-stone-900 p-4 sm:p-5 rounded-2xl border border-stone-800 shadow-md space-y-3">
-            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-              {/* 左側: ロゴ & 合計金額表示 */}
-              <div className="flex items-center gap-3 min-w-0 flex-wrap sm:flex-nowrap justify-between sm:justify-start">
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-12 h-12 rounded-2xl border border-stone-800 p-1 flex items-center justify-center shadow-lg shrink-0 overflow-hidden bg-stone-950">
-                    {currentShopInfo.id === "sakura" && siteBranding.logoUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={siteBranding.logoUrl}
-                        alt={currentShopInfo.name}
-                        className="w-full h-full object-contain"
-                      />
-                    ) : (
-                      <span className="text-2xl">{currentShopInfo.icon || "🏪"}</span>
-                    )}
-                  </div>
-
-                  <div className="min-w-0">
-                    <span className="text-[11px] font-bold text-stone-400 block truncate">
-                      【{currentShopInfo.name}】選択中 ({totalItemsCount}点)
-                    </span>
-
-                    <div className="flex items-baseline gap-2 whitespace-nowrap">
-                      <span className="text-xs font-bold text-stone-400">合計:</span>
-                      <span className="text-2xl sm:text-3xl font-black tracking-tight text-white">
-                        {formatCurrency(finalTotalAmount)}
-                      </span>
-                      {validDiscount > 0 && (
-                        <span className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
-                          <span>(-¥{validDiscount.toLocaleString()})</span>
-                          <span className="text-[11px] text-stone-500 line-through hidden md:inline">
-                            小計 {formatCurrency(subtotal)}
-                          </span>
-                        </span>
-                      )}
-                    </div>
-                  </div>
+          {/* ② 会計＆売る・作成アクションパネル */}
+          <div className="bg-stone-900 border border-stone-800 p-4 sm:p-5 rounded-2xl shadow-xl space-y-4">
+            {/* 上段: ロゴ & 合計金額表示 */}
+            <div className="flex items-center justify-between gap-3 border-b border-stone-800/80 pb-3">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-12 h-12 rounded-2xl border border-stone-800 p-1 flex items-center justify-center shadow-lg shrink-0 overflow-hidden bg-stone-950">
+                  {currentShopInfo.id === "sakura" && siteBranding.logoUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={siteBranding.logoUrl}
+                      alt={currentShopInfo.name}
+                      className="w-full h-full object-contain"
+                    />
+                  ) : (
+                    <span className="text-2xl">{currentShopInfo.icon || "🏪"}</span>
+                  )}
                 </div>
 
-                <div className="flex items-center gap-1.5 shrink-0 flex-wrap sm:flex-nowrap">
-                  {/* 👥 複数人で作業（出張修理）ボタン */}
-                  <button
-                    type="button"
-                    onClick={() => setIsMultiStaff(!isMultiStaff)}
-                    className={`h-9 px-3 rounded-xl border transition-all cursor-pointer font-bold text-xs flex items-center gap-1.5 whitespace-nowrap shrink-0 ${
-                      isMultiStaff
-                        ? "bg-indigo-500/20 text-indigo-300 border-indigo-500/50 shadow-xs"
-                        : "bg-stone-800 text-stone-300 hover:text-white border-stone-700 hover:bg-stone-700"
-                    }`}
-                  >
-                    <Users className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
-                    <span>{isMultiStaff ? "👥 分担入力中" : "👥 複数人で作業 (出張修理)"}</span>
-                  </button>
+                <div className="min-w-0">
+                  <span className="text-[11px] font-bold text-stone-400 block truncate">
+                    【{currentShopInfo.name}】選択中 ({totalItemsCount}点)
+                  </span>
 
-                  {totalItemsCount > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => setShowDiscountForm(!showDiscountForm)}
-                      className={`h-9 px-3 rounded-xl border transition-all cursor-pointer font-bold text-xs flex items-center gap-1.5 whitespace-nowrap shrink-0 ${
-                        validDiscount > 0
-                          ? "bg-amber-500/20 text-amber-300 border-amber-500/50 shadow-xs"
-                          : showDiscountForm
-                          ? "bg-stone-700 text-white border-stone-600"
-                          : "bg-stone-800 text-stone-300 hover:text-white border-stone-700 hover:bg-stone-700"
-                      }`}
-                    >
-                      <Tag className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                      <span>{validDiscount > 0 ? "値引き中" : "調整値引き"}</span>
-                    </button>
-                  )}
-
-                  {totalItemsCount > 0 && (
-                    <button
-                      type="button"
-                      onClick={handleResetAll}
-                      className="h-9 px-3 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-300 hover:text-white border border-stone-700 transition-colors cursor-pointer text-xs font-bold flex items-center gap-1 whitespace-nowrap shrink-0"
-                    >
-                      <RotateCcw className="w-3.5 h-3.5 shrink-0" />
-                      <span>クリア</span>
-                    </button>
+                  <div className="flex items-baseline gap-2 whitespace-nowrap">
+                    <span className="text-xs font-bold text-stone-400">合計:</span>
+                    <span className="text-2xl sm:text-3xl font-black tracking-tight text-white font-mono">
+                      {formatCurrency(finalTotalAmount)}
+                    </span>
+                  </div>
+                  {validDiscount > 0 && (
+                    <div className="text-[11px] font-bold text-amber-400 flex items-center gap-1.5 mt-0.5">
+                      <span>値引き: -¥{validDiscount.toLocaleString()}</span>
+                      <span className="text-stone-500 line-through">
+                        (小計 {formatCurrency(subtotal)})
+                      </span>
+                    </div>
                   )}
                 </div>
               </div>
 
-              {/* 右側: 「売る」ボタン ＆ 「作成 (在庫増)」ボタン（改行防止・固定サイズ） */}
-              <div className="flex items-center gap-2.5 w-full lg:w-auto shrink-0">
-                {/* 売るボタン */}
+              {totalItemsCount > 0 && (
                 <button
                   type="button"
-                  onClick={handleSell}
-                  disabled={totalItemsCount === 0}
-                  className="flex-1 lg:flex-initial h-11 px-6 rounded-2xl bg-rose-700 hover:bg-rose-600 disabled:opacity-40 disabled:cursor-not-allowed font-extrabold text-sm text-white shadow-md shadow-rose-950/40 flex items-center justify-center gap-2 transition-all transform active:scale-95 cursor-pointer whitespace-nowrap shrink-0"
+                  onClick={handleResetAll}
+                  className="px-2.5 py-1 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-400 hover:text-white border border-stone-700 transition-colors cursor-pointer text-[11px] font-bold flex items-center gap-1 shrink-0"
+                  title="選択をクリア"
                 >
-                  <ShoppingBag className="w-4 h-4 shrink-0" />
-                  <span>売る (在庫減算)</span>
+                  <RotateCcw className="w-3.5 h-3.5 shrink-0" />
+                  <span>クリア</span>
                 </button>
+              )}
+            </div>
 
-                {/* 作成ボタン (在庫を作った時のボタン - 機能有効時のみ表示) */}
-                {storeSettings.enableCrafting && (
-                  <button
-                    type="button"
-                    onClick={handleCraft}
-                    disabled={totalItemsCount === 0}
-                    className="flex-1 lg:flex-initial h-11 px-5 rounded-2xl bg-emerald-700 hover:bg-emerald-600 disabled:opacity-40 disabled:cursor-not-allowed font-extrabold text-sm text-white shadow-md shadow-emerald-950/40 flex items-center justify-center gap-2 transition-all transform active:scale-95 cursor-pointer whitespace-nowrap shrink-0"
-                  >
-                    <Hammer className="w-4 h-4 shrink-0" />
-                    <span>作成 (在庫増)</span>
-                  </button>
-                )}
-              </div>
+            {/* アクションボタン: 「売る」＆「作成」 */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {/* 売るボタン */}
+              <button
+                type="button"
+                onClick={handleSell}
+                disabled={totalItemsCount === 0}
+                className={`h-12 px-4 rounded-xl font-extrabold text-sm text-white shadow-md flex items-center justify-center gap-2 transition-all transform active:scale-95 cursor-pointer ${
+                  storeSettings.enableCrafting ? "sm:col-span-1" : "sm:col-span-2"
+                } ${
+                  totalItemsCount > 0
+                    ? "bg-rose-700 hover:bg-rose-600 shadow-rose-950/50"
+                    : "bg-stone-800 text-stone-500 opacity-50 cursor-not-allowed"
+                }`}
+              >
+                <ShoppingBag className="w-4 h-4 shrink-0" />
+                <span>売る (在庫減算)</span>
+              </button>
+
+              {/* 作成ボタン (在庫を作った時のボタン - 機能有効時のみ表示) */}
+              {storeSettings.enableCrafting && (
+                <button
+                  type="button"
+                  onClick={handleCraft}
+                  disabled={totalItemsCount === 0}
+                  className={`h-12 px-4 rounded-xl font-extrabold text-sm text-white shadow-md flex items-center justify-center gap-2 transition-all transform active:scale-95 cursor-pointer ${
+                    totalItemsCount > 0
+                      ? "bg-emerald-700 hover:bg-emerald-600 shadow-emerald-950/50"
+                      : "bg-stone-800 text-stone-500 opacity-50 cursor-not-allowed"
+                  }`}
+                >
+                  <Hammer className="w-4 h-4 shrink-0" />
+                  <span>作成 (在庫増)</span>
+                </button>
+              )}
+            </div>
+
+            {/* ツールバー: 👥 出張修理分担 ＆ 調整値引き ボタン */}
+            <div className="flex items-center gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setIsMultiStaff(!isMultiStaff)}
+                className={`flex-1 h-9 px-2.5 rounded-xl border transition-all cursor-pointer font-bold text-xs flex items-center justify-center gap-1.5 ${
+                  isMultiStaff
+                    ? "bg-indigo-500/20 text-indigo-300 border-indigo-500/50 shadow-xs"
+                    : "bg-stone-950 text-stone-300 hover:text-white border-stone-800 hover:bg-stone-800"
+                }`}
+              >
+                <Users className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                <span>{isMultiStaff ? "👥 分担入力中" : "👥 出張修理 (複数人分担)"}</span>
+              </button>
+
+              {totalItemsCount > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setShowDiscountForm(!showDiscountForm)}
+                  className={`h-9 px-3 rounded-xl border transition-all cursor-pointer font-bold text-xs flex items-center justify-center gap-1.5 shrink-0 ${
+                    validDiscount > 0
+                      ? "bg-amber-500/20 text-amber-300 border-amber-500/50 shadow-xs"
+                      : showDiscountForm
+                      ? "bg-stone-700 text-white border-stone-600"
+                      : "bg-stone-950 text-stone-300 hover:text-white border-stone-800 hover:bg-stone-800"
+                  }`}
+                >
+                  <Tag className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                  <span>{validDiscount > 0 ? "値引き中" : "値引き"}</span>
+                </button>
+              )}
             </div>
 
             {/* 調整値引き入力パネル (トグルまたは値引き設定時表示) */}
@@ -1053,10 +1065,10 @@ export default function MainPage() {
         </div>
       </div>
 
-      {/* スクロールコンテンツ領域（商品一覧 & 売上伝票履歴） */}
-      <div className="max-w-6xl mx-auto px-4 md:px-6 py-6 space-y-6 pb-16">
-        {/* 商品一覧（画像1の「商品名」「個数」レイアウト ＆ 画像2の [0][1][10][100] ボタン） */}
-        <div className="space-y-3">
+        {/* 🟦 右カラム: 商品一覧 ＆ カテゴリータブ (青枠) */}
+        <div className="flex-1 min-w-0 space-y-4">
+          {/* 商品一覧（画像1の「商品名」「個数」レイアウト ＆ 画像2の [0][1][10][100] ボタン） */}
+          <div className="space-y-3">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between px-2 gap-1.5">
           <h2 className="text-sm font-bold text-stone-300 uppercase tracking-wider flex items-center gap-2">
             <Boxes className="w-4 h-4 text-rose-500" />
@@ -1274,8 +1286,7 @@ export default function MainPage() {
           })}
         </div>
       </div>
-
-      </div>
     </div>
-  );
+  </div>
+);
 }
