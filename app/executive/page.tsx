@@ -1625,15 +1625,10 @@ export default function ExecutivePage() {
 
         filteredSales.forEach((s) => {
           const amt = s.totalAmount ?? s.total_amount ?? 0;
-          if (s.storeRemainingAmount !== undefined && s.staffIncentiveAmount !== undefined) {
-            totalStoreRemaining += s.storeRemainingAmount;
-            totalIncentive += s.staffIncentiveAmount;
-          } else {
-            const rate = s.storeRemainingRate ?? 70;
-            const rem = Math.round(amt * (rate / 100));
-            totalStoreRemaining += rem;
-            totalIncentive += amt - rem;
-          }
+          const rate = storeRate;
+          const rem = Math.round(amt * (rate / 100));
+          totalStoreRemaining += rem;
+          totalIncentive += amt - rem;
         });
 
         // クラフト仕込みログ集計
@@ -1728,15 +1723,10 @@ export default function ExecutivePage() {
           let discountCount = 0;
           userSales.forEach((s) => {
             const amt = s.totalAmount ?? s.total_amount ?? 0;
-            if (s.storeRemainingAmount !== undefined && s.staffIncentiveAmount !== undefined) {
-              storeRemaining += s.storeRemainingAmount;
-              incentive += s.staffIncentiveAmount;
-            } else {
-              const rate = s.storeRemainingRate ?? 70;
-              const rem = Math.round(amt * (rate / 100));
-              storeRemaining += rem;
-              incentive += amt - rem;
-            }
+            const rate = storeRate;
+            const rem = Math.round(amt * (rate / 100));
+            storeRemaining += rem;
+            incentive += amt - rem;
             const disc = s.discountAmount ?? 0;
             if (disc > 0) {
               discountAmount += disc;
@@ -2339,8 +2329,8 @@ export default function ExecutivePage() {
                         <th className="py-2.5 px-3 text-right">料理仕込み</th>
                         <th className="py-2.5 px-3 text-right">素材調達</th>
                         <th className="py-2.5 px-3 text-right">値引き実績</th>
-                        <th className="py-2.5 px-3 text-right">純残り貢献 (70%)</th>
-                        <th className="py-2.5 px-3 text-right">手渡し受取 (30%)</th>
+                        <th className="py-2.5 px-3 text-right">純残り貢献 ({storeRate}%)</th>
+                        <th className="py-2.5 px-3 text-right">手渡し受取 ({staffIncentiveRate}%)</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-stone-800/60 font-medium">

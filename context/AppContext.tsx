@@ -1655,8 +1655,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             itemsSold += staffItems;
             shopItemsSold[sShopId] = (shopItemsSold[sShopId] || 0) + staffItems;
 
-            // 店舗純残り & インセンティブも按分比率で計算
-            const remRate = s.storeRemainingRate ?? 70;
+            // 店舗純残り & インセンティブも按分比率で計算 (店舗設定の最新割合を優先連動)
+            const remRate = storeSettings.storeRemainingRate ?? s.storeRemainingRate ?? 70;
             const rem = Math.round(staffAmt * (remRate / 100));
             storeRemaining70 += rem;
             incentive30 += (staffAmt - rem);
@@ -1672,15 +1672,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             itemsSold += sItemsCount;
             shopItemsSold[sShopId] = (shopItemsSold[sShopId] || 0) + sItemsCount;
 
-            if (s.storeRemainingAmount !== undefined && s.staffIncentiveAmount !== undefined) {
-              storeRemaining70 += s.storeRemainingAmount;
-              incentive30 += s.staffIncentiveAmount;
-            } else {
-              const rate = s.storeRemainingRate ?? 70;
-              const rem = Math.round(amt * (rate / 100));
-              storeRemaining70 += rem;
-              incentive30 += (amt - rem);
-            }
+            const effectiveRate = storeSettings.storeRemainingRate ?? s.storeRemainingRate ?? 70;
+            const rem = Math.round(amt * (effectiveRate / 100));
+            storeRemaining70 += rem;
+            incentive30 += (amt - rem);
           }
         }
       });
@@ -1840,9 +1835,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const spSales = weekSales.filter((s) => (s.shopId || shops[0]?.id || "sakura") === sp.id);
       const spSalesTotal = spSales.reduce((sum, s) => sum + (s.totalAmount ?? s.total_amount ?? 0), 0);
       const spStoreRemaining = spSales.reduce((sum, s) => {
-        if (s.storeRemainingAmount !== undefined) return sum + s.storeRemainingAmount;
         const amt = s.totalAmount ?? s.total_amount ?? 0;
-        const rate = s.storeRemainingRate ?? 70;
+        const rate = storeSettings.storeRemainingRate ?? s.storeRemainingRate ?? 70;
         return sum + Math.round(amt * (rate / 100));
       }, 0);
       const spIncentive = spSalesTotal - spStoreRemaining;
